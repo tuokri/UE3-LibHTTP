@@ -51,13 +51,19 @@
 	Released under the Lesser Open Unreal Mod License							<br />
 	http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense				<br />
 
-	<!-- $Id: HttpSock.uc,v 1.31 2004/09/26 07:57:33 elmuerte Exp $ -->
+	<!-- $Id: HttpSock.uc,v 1.32 2004/09/26 08:04:35 elmuerte Exp $ -->
 *******************************************************************************/
 
 class HttpSock extends Info config;
 
 /** LibHTTP version number */
 const VERSION = 350;
+/**
+	If you make a custom build of this package, or subclass this class then
+	please change the following constant to countain your "extention" name. This
+	will be used in the	UserAgent string. (Change it in the defaultproperties)
+*/
+var const string EXTENTION;
 
 /** the output buffer size */
 const BUFFERSIZE = 2048;
@@ -734,7 +740,11 @@ function Logf(coerce string message, optional int level, optional coerce string 
 /** Returns the useragent string we use */
 protected function string UserAgent()
 {
-	return "LibHTTP/"$VERSION@"(UnrealEngine2; build "@Level.EngineVersion$"; http://wiki.beyondunreal.com/wiki/LibHTTP )";
+	local string res;
+	res = "LibHTTP/"$VERSION@"(UnrealEngine2; build "@Level.EngineVersion$"; http://wiki.beyondunreal.com/wiki/LibHTTP ";
+	if (EXTENTION != "") res = res$";"@EXTENTION;
+	res = res$")";
+	return res;
 }
 
 /**
@@ -1355,6 +1365,7 @@ function int now()
 
 defaultproperties
 {
+	EXTENTION=""
 	iVerbose=-1
 	iLocalPort=0
 	bFollowRedirect=true
