@@ -12,17 +12,13 @@
 
 	Authors:	Michiel 'El Muerte' Hendriks <elmuerte@drunksnipers.com>
 
-	$Id: HttpSock.uc,v 1.4 2003/07/29 09:51:12 elmuerte Exp $
-
-	TODO:
-	- implement RawUrlEncode
-	- add cookie support
+	$Id: HttpSock.uc,v 1.5 2003/07/29 14:03:43 elmuerte Exp $
 */
 
 class HttpSock extends TcpLink config;
 
 /** LibHTTP version number */
-const VERSION = 101;
+const VERSION = 102;
 
 /** the output buffer size */
 const BUFFERSIZE = 2048;
@@ -49,6 +45,10 @@ var config string sAuthUsername, sAuthPassword;
 var config int iVerbose;
 /** Maximum redirections to follow */
 var config int iMaxRedir;
+/** Send cookie data, defaults to true */
+var config bool bSendCookies;
+/** Process incoming cookies, defaults to false */
+var config bool bProcCookies;
 
 /* local variables */
 
@@ -64,6 +64,8 @@ var array<string> ReturnHeaders;
 var array<string> RequestData;
 /** the return data */
 var array<string> ReturnData;
+/** the cookie data instance */
+var HTTPCookies Cookies;
 
 /** @ignore */
 var protected string inBuffer, outBuffer;
@@ -125,7 +127,7 @@ delegate OnComplete();
 	Method defaults to GET
 	Headers are additional headers to send, adviced is to use AddHeader
 */
-function bool HttpRequest(string location, optional string Method, optional array<string> Headers)
+function bool HttpRequest(string location, optional string Method, optional array<string> Headers, optional HTTPCookies CookieData)
 {
 	local int i, j;
 	if (curState != HTTPState_Closed)
@@ -178,6 +180,7 @@ function bool HttpRequest(string location, optional string Method, optional arra
 	// start resolve
 	curState = HTTPState_Resolving;
 	CurRedir = 0;
+	Cookies = CookieData;
 	CRLF = Chr(13)$Chr(10);
 	Resolve(sHostname);
 }
@@ -189,7 +192,7 @@ function bool HttpRequest(string location, optional string Method, optional arra
 function AddHeader(string hname, string value, optional bool bNoReplace)
 {
 	local int i;
-	for (i = 0; i < RequestHeaders.length; i++)
+	for (i = RequestHeaders.length-1; i >= 0; i--)
 	{
 		if (Left(RequestHeaders[i], InStr(RequestHeaders[i], ":")) ~= hname)
 		{
@@ -198,6 +201,7 @@ function AddHeader(string hname, string value, optional bool bNoReplace)
 			break;
 		}
 	}
+	if (value == "") return;
 	RequestHeaders[RequestHeaders.length] = hname$":"@value;
 }
 
@@ -251,14 +255,6 @@ function string GetReturnHeader(string hname, optional string def)
 		}
 	}
 	return def;
-}
-
-/**
-	Encode special characters to an url format
-*/
-static function string RawUrlEncode(string instring)
-{
-	return instring;
 }
 
 /**
@@ -397,10 +393,14 @@ event Opened()
 	{
 		AddHeader("Content-Length", string(DataSize(RequestData)));
 	}
+	if (bSendCookies && (Cookies != none))
+	{
+		AddHeader("Cookie", Cookies.GetCookieString(sHostname, RequestLocation, now()));
+	}
   for (i = 0; i < RequestHeaders.length; i++)
 	{
 		SendData(RequestHeaders[i]);
-	}
+	}	
 	if ((RequestMethod ~= "POST") || (RequestMethod ~= "PUT"))
 	{
 		SendData("");
@@ -537,7 +537,7 @@ protected function string genBasicAuthorization(string Username, string Password
 	local string res;
 	local array<byte> inp;
 	local array<string> outp;
-	if (authBasicLookup.length == 0) genBasicLookupTable();
+	if (authBasicLookup.length == 0) class'HttpUtil'.static.Base64LookupTable(authBasicLookup);
 	res = Username$":"$Password;
 	// convert string to byte array
 	for (i = 0; i < len(res); i++)
@@ -584,25 +584,11 @@ protected function string genBasicAuthorization(string Username, string Password
 }
 
 /**
-	Generated the base 64 lookup table
+	Returns the current timestamp
 */
-protected function genBasicLookupTable()
+function int now()
 {
-	local int i;
-	for (i = 0; i < 26; i++)
-	{
-		authBasicLookup[i] = Chr(i+65);
-	}
-	for (i = 0; i < 26; i++)
-	{
-		authBasicLookup[i+26] = Chr(i+97);
-	}
-	for (i = 0; i < 10; i++)
-	{
-		authBasicLookup[i+52] = Chr(i+48);
-	}
-	authBasicLookup[62] = "+";
-	authBasicLookup[63] = "/";
+	return class'HttpUtil'.static.timestamp(Level.Year, Level.Month, Level.Day, Level.Hour, Level.Minute, Level.Second);
 }
 
 defaultproperties
@@ -613,4 +599,6 @@ defaultproperties
 	curState=HTTPState_Closed
 	iMaxRedir=5
 	HTTPVER="1.0"
+	bSendCookies=true
+	bProcCookies=false
 }
