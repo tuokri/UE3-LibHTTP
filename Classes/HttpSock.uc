@@ -1,7 +1,7 @@
-/**
+/*******************************************************************************
 	HttpSock
-	Base of [[LibHTTP]] this implements the main network methods for connecting to a
-	webserver and retreiving data from it
+	Base of [[LibHTTP]] this implements the main network methods for connecting
+	to a webserver and retreiving data from it
 
 	Features:
 	* GET/POST support
@@ -11,18 +11,21 @@
 	* Cookie management
 	* Support for HTTP Proxy
 
+	New in version 200:
+	* Supports HTTP 1.1
+
 	Dcoumentation and Information:
 		http://wiki.beyondunreal.com/wiki/LibHTTP
 
 	Authors:	Michiel 'El Muerte' Hendriks <elmuerte@drunksnipers.com>
 
-	$Id: HttpSock.uc,v 1.12 2003/07/31 08:34:28 elmuerte Exp $
-*/
+	<!-- $Id: HttpSock.uc,v 1.13 2004/03/14 11:08:51 elmuerte Exp $ -->
+*******************************************************************************/
 
 class HttpSock extends TcpLink config;
 
 /** LibHTTP version number */
-const VERSION = 105;
+const VERSION = 200;
 
 /** the output buffer size */
 const BUFFERSIZE = 2048;
@@ -31,34 +34,36 @@ const BUFFERSIZE = 2048;
 var protected string CRLF;
 
 /** The HTTP version to use, 1.0 adviced */
-var string HTTPVER;
+var protected string HTTPVER;
 
 /* config variables */
 
-/** the remote host */
-var config string sHostname;
-/** the remote port */
-var config int iPort;
+/** the remote host, can be passed in the url */
+var(URL) config string sHostname;
+/** the remote port, can be passed in the url */
+var(URL) config int iPort;
 /** the local port, leave zero to use a random port (adviced) */
-var config int iLocalPort;
-/** when set to false it won't follow redirects */
-var config bool bFollowRedirect;
+var(URL) config int iLocalPort;
 /** the username and password to use when authentication is required */
-var config string sAuthUsername, sAuthPassword;
+var(URL) config string sAuthUsername, sAuthPassword;
+
 /** log verbosity */
-var config int iVerbose;
+var(Options) config int iVerbose;
+/** when set to false it won't follow redirects */
+var(Options) config bool bFollowRedirect;
 /** Maximum redirections to follow */
-var config int iMaxRedir;
+var(Options) config int iMaxRedir;
 /** Send cookie data, defaults to true */
-var config bool bSendCookies;
+var(Options) config bool bSendCookies;
 /** Process incoming cookies, defaults to false */
-var config bool bProcCookies;
+var(Options) config bool bProcCookies;
+
 /** Use a proxy server */
-var config bool bUseProxy;
+var(Proxy) config bool bUseProxy;
 /** The hostname of the proxy */
-var config string sProxyHost;
+var(Proxy) config string sProxyHost;
 /** The proxy port */
-var config int iProxyPort;
+var(Proxy) config int iProxyPort;
 
 /* local variables */
 
@@ -98,7 +103,13 @@ var protected array<string> authBasicLookup;
 /** Timezone Offset, dynamically calculated from the server's time */
 var protected int TZoffset;
 
-enum HTTPState {
+/** @ignore */
+var protected int chunkedCounter; // to count the current chunk
+/** @ignore */
+var protected bool bIsChunked; // if Transfer-Encoding: chunked
+
+enum HTTPState
+{
 		HTTPState_Resolving,
 		HTTPState_Connecting,
 		HTTPState_ReceivingData,
@@ -154,7 +165,7 @@ function bool HttpRequest(string location, optional string Method, optional HTTP
 		Logf("Unsupported location", class'HttpUtil'.default.LOGERR, location);
 		return false;
 	}
-	else RequestLocation = location;	
+	else RequestLocation = location;
 	if (sHostname == "")
 	{
 		Logf("No remote hostname", class'HttpUtil'.default.LOGERR);
@@ -168,7 +179,7 @@ function bool HttpRequest(string location, optional string Method, optional HTTP
 	// Add default headers
 	AddHeader("Host", sHostname);
 	AddHeader("User-Agent", UserAgent());
-	AddHeader("Connection", "close");	
+	AddHeader("Connection", "close");
 	if (sAuthUsername != "") AddHeader("Authorization", genBasicAuthorization(sAuthUsername, sAuthPassword));
 	if ((Method ~= "POST") && (InStr(RequestLocation, "?") > -1 ))
 	{
@@ -182,7 +193,7 @@ function bool HttpRequest(string location, optional string Method, optional HTTP
 	if (CookieData != none) Cookies = CookieData;
 	CRLF = Chr(13)$Chr(10);
 
-	if (bUseProxy) 
+	if (bUseProxy)
 	{
 		if (sProxyHost == "")
 		{
@@ -284,6 +295,29 @@ function bool Abort()
 	return false;
 }
 
+/** Set the HTTP version, if empty the default will be used.
+	Returns true when the version has been updated */
+function bool setHTTPversion(optional string newver)
+{
+	if (newver == "")
+	{
+		HTTPVER = default.HTTPVER;
+		return true;
+	}
+	else if ((newver ~= "1.0") || (newver ~= "1.1"))
+	{
+		HTTPVER = newver;
+		return true;
+	}
+	return false;
+}
+
+/** return thr current HTTP version setting */
+function string getHTTPversion()
+{
+	return HTTPVER;
+}
+
 /* Internal routines */
 
 protected function Logf(coerce string message, optional int level, optional coerce string Param1, optional coerce string Param2)
@@ -295,7 +329,7 @@ protected function Logf(coerce string message, optional int level, optional coer
 /** Returns the useragent string we use */
 protected function string UserAgent()
 {
-	return "LibHTTP/"$VERSION@"(Unreal Engine"@Level.EngineVersion$"; http://wiki.beyondunreal.com/wiki/LibHTML )";
+	return "LibHTTP/"$VERSION@"(UnrealEngine2; build "@Level.EngineVersion$"; http://wiki.beyondunreal.com/wiki/LibHTTP )";
 }
 
 protected function int DataSize(array<string> data)
@@ -339,7 +373,7 @@ protected function ParseRequestUrl(string location, string Method)
 		location = Mid(location, i+1);
 		j = InStr(sAuthUsername, ":");
 		if (j > -1)
-		{			
+		{
 			sAuthPassword = Mid(sAuthUsername, j+1);
 			sAuthUsername = Left(sAuthUsername, j);
 			Logf("ParseRequestUrl", class'HttpUtil'.default.LOGINFO, "sAuthPassword", sAuthPassword);
@@ -364,22 +398,22 @@ event Resolved( IpAddr Addr )
 	LocalLink.Addr = Addr.Addr;
 	if (bUseProxy) LocalLink.Port = iProxyPort;
 		else LocalLink.Port = iPort;
-	if (!OnResolved()) 
+	if (!OnResolved())
 	{
 		Logf("Request aborted", class'HttpUtil'.default.LOGWARN, "OnResolved() == false");
 		curState = HTTPState_Closed;
 		return;
 	}
-	if (iLocalPort > 0) 
+	if (iLocalPort > 0)
 	{
 		i = BindPort(iLocalPort, true);
 		if (i != iLocalPort) Logf("Could not bind preference port", class'HttpUtil'.default.LOGWARN, iLocalPort);
 	}
 	else BindPort();
-  LinkMode = MODE_Text;
-  ReceiveMode = RMODE_Event;
+	LinkMode = MODE_Text;
+	ReceiveMode = RMODE_Event;
 	curState = HTTPState_Connecting;
-  if (!Open(LocalLink))
+	if (!Open(LocalLink))
 	{
 		Logf("Open() failed", class'HttpUtil'.default.LOGERR);
 		curState = HTTPState_Closed;
@@ -388,14 +422,14 @@ event Resolved( IpAddr Addr )
 
 event ResolveFailed()
 {
-  Logf("Resolve failed", class'HttpUtil'.default.LOGERR, sHostname);
+	Logf("Resolve failed", class'HttpUtil'.default.LOGERR, sHostname);
 	curState = HTTPState_Closed;
 }
 
 event Opened()
 {
 	local int i;
-  Logf("Connection established", class'HttpUtil'.default.LOGINFO);
+	Logf("Connection established", class'HttpUtil'.default.LOGINFO);
 	inBuffer = ""; // clear buffer
 	outBuffer = ""; // clear buffer
 	if (bUseProxy) SendData(RequestMethod@"http://"$sHostname$":"$string(iPort)$RequestLocation@"HTTP/"$HTTPVER);
@@ -408,10 +442,10 @@ event Opened()
 	{
 		AddHeader("Cookie", Cookies.GetCookieString(sHostname, RequestLocation, now()));
 	}
-  for (i = 0; i < RequestHeaders.length; i++)
+	for (i = 0; i < RequestHeaders.length; i++)
 	{
 		SendData(RequestHeaders[i]);
-	}	
+	}
 	if ((RequestMethod ~= "POST") || (RequestMethod ~= "PUT"))
 	{
 		SendData("");
@@ -426,6 +460,8 @@ event Opened()
 	procHeader = true;
 	FollowingRedir = false;
 	RedirTrap = false;
+	bIsChunked = false;
+	chunkedCounter = 0;
 	Logf("Request send", class'HttpUtil'.default.LOGINFO);
 }
 
@@ -449,17 +485,20 @@ event Closed()
 event ReceivedText( string Line )
 {
 	local array<string> tmp;
-	local int i;
+	local int i, datalen;
 
 	curState = HTTPState_ReceivingData;
 	if (Split(line, Chr(10), tmp) == 0) return;
 	tmp[0] = inBuffer$tmp[0];
 	for (i = 0; i < tmp.length-1; i++)
 	{
-		if (Right(tmp[i], 1) == Chr(13)) tmp[i] = Left(tmp[i], Len(tmp[i])-1); // trim trailing #13
+		datalen = Len(tmp[i])+1;
+		if (Right(tmp[i], 1) == Chr(13)) tmp[i] = Left(tmp[i], datalen-2); // trim trailing #13
+		if (Left(tmp[i], 1) == Chr(13)) tmp[i] = Mid(tmp[i], 1); // trim leading #13
 		ProcInput(tmp[i]);
+		if (bIsChunked && !procHeader) chunkedCounter -= datalen; // +1 for the missing #10
 	}
-  inBuffer = tmp[tmp.length-1]; // FIXME: ?? could be real last line
+	if (tmp.length > 0) inBuffer = tmp[tmp.length-1];
 }
 
 /**
@@ -469,10 +508,16 @@ protected function ProcInput(string inline)
 {
 	local array<string> tmp2;
 	local int retc, i;
-	Logf("Received data", class'HttpUtil'.default.LOGDATA, inline, procHeader);
+	Logf("Received data", class'HttpUtil'.default.LOGDATA, procHeader, len(inline)$"::"@inline);
 	if (procHeader)
 	{
-		if (ReturnHeaders.length == 0) 
+		if (inline == "")
+		{
+			procHeader = false;
+			return;
+		}
+
+		if (ReturnHeaders.length == 0)
 		{
 			Split(inline, " ", tmp2);
 			retc = int(tmp2[1]);
@@ -491,7 +536,7 @@ protected function ProcInput(string inline)
 		// if following redirection find new location
 		retc = InStr(inline, ":");
 		if (FollowingRedir)
-		{			
+		{
 			if (Left(inline, retc) ~= "location")
 			{
 				Logf("Redirect Location", class'HttpUtil'.default.LOGINFO, inline);
@@ -524,10 +569,19 @@ protected function ProcInput(string inline)
 				Logf("Timezone offset", class'HttpUtil'.default.LOGINFO, TZoffset);
 			}
 		}
-		if (inline == "") procHeader = false;
+		if (Left(inline, retc) ~= "transfer-encoding")
+		{
+			bIsChunked = InStr(Caps(inline), "CHUNKED") > -1;
+			Logf("Body is chunked", class'HttpUtil'.default.LOGINFO, bIsChunked);
+		}
 	}
 	else {
-		ReturnData[ReturnData.length] = inline;
+		if (bIsChunked && (chunkedCounter <= 0))
+		{
+			chunkedCounter = class'HttpUtil'.static.HexToDec(inline);
+			Logf("Next chunk", class'HttpUtil'.default.LOGINFO, chunkedCounter);
+		}
+		else ReturnData[ReturnData.length] = inline;
 	}
 }
 
@@ -578,7 +632,7 @@ defaultproperties
 	bFollowRedirect=true
 	curState=HTTPState_Closed
 	iMaxRedir=5
-	HTTPVER="1.0"
+	HTTPVER="1.1"
 	bSendCookies=true
 	bProcCookies=false
 	bUseProxy=false

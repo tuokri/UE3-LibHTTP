@@ -7,7 +7,7 @@
 
 	Authors:	Michiel 'El Muerte' Hendriks <elmuerte@drunksnipers.com>
 
-	$Id: HttpUtil.uc,v 1.6 2003/07/30 22:05:49 elmuerte Exp $
+	$Id: HttpUtil.uc,v 1.7 2004/03/14 11:08:51 elmuerte Exp $
 */
 
 class HttpUtil extends Object;
@@ -83,15 +83,15 @@ static function array<string> Base64Encode(array<string> indata, out array<strin
 		{
 			inp[inp.length] = Asc(Mid(res, i, 1));
 		}
-	
+
 		dl = inp.length;
 		// fix byte array
-		if ((dl%3) == 1) 
+		if ((dl%3) == 1)
 		{
-			inp[inp.length] = 0; 
+			inp[inp.length] = 0;
 			inp[inp.length] = 0;
 		}
-		if ((dl%3) == 2) 
+		if ((dl%3) == 2)
 		{
 			inp[inp.length] = 0;
 		}
@@ -101,20 +101,20 @@ static function array<string> Base64Encode(array<string> indata, out array<strin
 			outp[outp.length] = B64Lookup[(inp[i] >> 2)];
 			outp[outp.length] = B64Lookup[((inp[i]&3)<<4) | (inp[i+1]>>4)];
 			outp[outp.length] = B64Lookup[((inp[i+1]&15)<<2) | (inp[i+2]>>6)];
-			outp[outp.length] = B64Lookup[(inp[i+2]&63)];		
+			outp[outp.length] = B64Lookup[(inp[i+2]&63)];
 			i += 3;
 		}
 		// pad result
-		if ((dl%3) == 1) 
+		if ((dl%3) == 1)
 		{
-			outp[outp.length-1] = "="; 
+			outp[outp.length-1] = "=";
 			outp[outp.length-2] = "=";
 		}
-		if ((dl%3) == 2) 
+		if ((dl%3) == 2)
 		{
 			outp[outp.length-1] = "=";
 		}
-	
+
 		res = "";
 		for (i = 0; i < outp.length; i++)
 		{
@@ -145,7 +145,7 @@ static function array<string> Base64Decode(array<string> indata)
 		inp.length = 0;
 		padded = 0;
 		for (i = 0; i < len(res); i++)
-		{	
+		{
 			dl = Asc(Mid(res, i, 1));
 			// convert base64 ascii to base64 index
 			if ((dl >= 65) && (dl <= 90)) dl -= 65; // cap alpha
@@ -156,7 +156,7 @@ static function array<string> Base64Decode(array<string> indata)
 			else if (dl == 61) padded++;
 			inp[inp.length] = dl;
 		}
-	
+
 		dl = inp.length;
 		i = 0;
 		while (i < dl)
@@ -167,7 +167,7 @@ static function array<string> Base64Decode(array<string> indata)
 			i += 4;
 		}
 		outp.length = outp.length-padded;
-	
+
 		res = "";
 		for (i = 0; i < outp.length; i++)
 		{
@@ -219,7 +219,7 @@ static final function int timestamp(int year, int mon, int day, int hour, int mi
 	  )*60 + sec; /* finally seconds */
 }
 
-/** 
+/**
 	Parse a string to a timestamp
 	The date string is formatted as: Wdy, DD-Mon-YYYY HH:MM:SS GMT
 	TZoffset is the local offset to GMT
@@ -303,6 +303,26 @@ static final function string basename(string filename)
 	local array<string> parts;
 	if (split(filename, "/", parts) > 0) return parts[parts.length-1];
 	return filename;
+}
+
+/** convert a hexadecimal number to the integer counterpart */
+static final function int HexToDec(string hexcode)
+{
+	local int res, i, cur;
+
+	res = 0;
+	hexcode = Caps(hexcode);
+	for (i = 0; i < len(hexcode); i++)
+	{
+		cur = Asc(Mid(hexcode, i, 1));
+		if (cur == 32) return res;
+		cur -= 48; // 0 = ascii 30
+		if (cur > 9) cur -= 7;
+		if ((cur > 15) || (cur < 0)) return -1; // not possible
+		res = res << 4;
+		res += cur;
+	}
+	return res;
 }
 
 defaultproperties
