@@ -4,7 +4,7 @@
 
 	Authors:	Michiel 'El Muerte' Hendriks <elmuerte@drunksnipers.com>
 
-	$Id: HttpUtil.uc,v 1.3 2003/07/30 12:52:53 elmuerte Exp $
+	$Id: HttpUtil.uc,v 1.4 2003/07/30 19:26:23 elmuerte Exp $
 */
 
 class HttpUtil extends Object;
@@ -44,11 +44,17 @@ static function string RawUrlEncode(string instring)
 static function ReplaceChar(out string instring, string from, string to)
 {
 	local int i;
-	i = InStr(instring, from);
-	while (i > 0)
+	local string src;
+	src = instring;
+	instring = "";
+	i = InStr(src, from);
+	while (i > -1)
 	{
-		instring = Left(instring, i)$to$Mid(instring, i+Len(from));
+		instring = instring$Left(src, i)$to;
+		src = Mid(src, i+Len(from));
+		i = InStr(src, from);
 	}
+	instring = instring$src;
 }
 
 /**
