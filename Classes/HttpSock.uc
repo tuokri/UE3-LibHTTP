@@ -28,13 +28,13 @@
 	Released under the Lesser Open Unreal Mod License							<br />
 	http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense				<br />
 
-	<!-- $Id: HttpSock.uc,v 1.17 2004/03/24 11:39:18 elmuerte Exp $ -->
+	<!-- $Id: HttpSock.uc,v 1.18 2004/03/26 15:29:05 elmuerte Exp $ -->
 *******************************************************************************/
 
-class HttpSock extends TcpLink config;
+class HttpSock extends Info config;
 
 /** LibHTTP version number */
-const VERSION = 200;
+const VERSION = 201;
 
 /** the output buffer size */
 const BUFFERSIZE = 2048;
@@ -108,13 +108,17 @@ struct RequestHistoryEntry
 	when redirections are followed */
 var array<RequestHistoryEntry> RequestHistory;
 
+/** the link class to use */
+var protected string HttpLinkClass;
+/** @ignore */
+var protected HttpLink HttpLink;
 /** @ignore */
 var protected string inBuffer, outBuffer;
 /** @ignore */
 var protected bool procHeader;
 
 /** @ingore */
-var protected IpAddr LocalLink;
+var protected InternetLink.IpAddr LocalLink;
 /** the port we are connected to */
 var protected int BoundPort;
 
@@ -153,7 +157,7 @@ struct ResolveCacheEntry
 	/** the hostname */
 	var string Hostname;
 	/** the address information */
-	var IpAddr Address;
+	var InternetLink.IpAddr Address;
 };
 /** Resolve cache, already resolved hostnames are not looked up.
 	You have to keep the actor alive in order to use this feature */
@@ -345,7 +349,7 @@ function bool Abort()
 	switch (curState)
 	{
 		case HTTPState_Connecting:
-		case HTTPState_ReceivingData: if (IsConnected()) return Close();
+		case HTTPState_ReceivingData: if (HttpLink.IsConnected()) return HttpLink.Close();
 	}
 	return false;
 }
@@ -459,6 +463,8 @@ protected function bool OpenConnection()
 	RequestHistory[i].Location = RequestLocation;
 	RequestHistory[i].HTTPresponse = 0; // none yet
 
+	if (!CreateSocket()) return false;
+
 	if (bUseProxy)
 	{
 		if (sProxyHost == "")
@@ -475,7 +481,7 @@ protected function bool OpenConnection()
 		{
 			curState = HTTPState_Resolving;
 			ResolveHostname = sProxyHost;
-			Resolve(sProxyHost);
+			HttpLink.Resolve(sProxyHost);
 		}
 	}
 	else {
@@ -483,7 +489,7 @@ protected function bool OpenConnection()
 		{
 			curState = HTTPState_Resolving;
 			ResolveHostname = sHostname;
-			Resolve(sHostname);
+			HttpLink.Resolve(sHostname);
 		}
 	}
 	return true;
@@ -497,7 +503,7 @@ protected function bool CachedResolve(coerce string hostname, optional bool bDon
 	{
 		if (ResolveCache[i].Hostname ~= hostname)
 		{
-			Logf("Resolve cache hit", class'HttpUtil'.default.LOGINFO, hostname, IpAddrToString(ResolveCache[i].Address));
+			Logf("Resolve cache hit", class'HttpUtil'.default.LOGINFO, hostname, HttpLink.IpAddrToString(ResolveCache[i].Address));
 			ResolveHostname = hostname;
 			if (!bDontConnect) InternalResolved(ResolveCache[i].Address, true);
 			return true;
@@ -506,14 +512,8 @@ protected function bool CachedResolve(coerce string hostname, optional bool bDon
 	return false;
 }
 
-/** @ignore */
-event Resolved( IpAddr Addr )
-{
-	InternalResolved(Addr);
-}
-
 /** hostname has been resolved */
-protected function InternalResolved( IpAddr Addr , optional bool bDontCache)
+function InternalResolved( InternetLink.IpAddr Addr , optional bool bDontCache)
 {
 	local int i;
 	Logf("Host resolved succesfully", class'HttpUtil'.default.LOGINFO, ResolveHostname);
@@ -534,31 +534,36 @@ protected function InternalResolved( IpAddr Addr , optional bool bDontCache)
 	}
 	if (iLocalPort > 0)
 	{
-		BoundPort = BindPort(iLocalPort, true);
+		BoundPort = HttpLink.BindPort(iLocalPort, true);
 		if (i != iLocalPort) Logf("Could not bind preference port", class'HttpUtil'.default.LOGWARN, iLocalPort);
 	}
-	else BoundPort = BindPort();
+	else BoundPort = HttpLink.BindPort();
 
 	if (BoundPort > 0) Logf("Local port succesfully bound", class'HttpUtil'.default.LOGINFO, BoundPort);
-	else Logf("Error binding local port", class'HttpUtil'.default.LOGINFO, BoundPort );
+	else {
+		Logf("Error binding local port", class'HttpUtil'.default.LOGERR, BoundPort );
+		CloseSocket();
+		return;
+	}
 
-	LinkMode = MODE_Text;
-	ReceiveMode = RMODE_Event;
+	HttpLink.LinkMode = MODE_Text;
+	HttpLink.ReceiveMode = RMODE_Event;
 
 	OnPreConnect();
 	curState = HTTPState_Connecting;
 	bTimeout = false;
 	SetTimer(fConnectTimout, false);
 	Logf("Opening connection", class'HttpUtil'.default.LOGINFO);
-	if (!Open(LocalLink))
+	if (!HttpLink.Open(LocalLink))
 	{
-		Logf("Open() failed", class'HttpUtil'.default.LOGERR, GetLastError());
+		Logf("Open() failed", class'HttpUtil'.default.LOGERR, HttpLink.GetLastError());
 		curState = HTTPState_Closed;
 		OnConnectError();
 	}
 }
 
-event ResolveFailed()
+/** will be called from HttpLink when the resolve failed */
+function ResolveFailed()
 {
 	curState = HTTPState_Closed;
 	Logf("Resolve failed", class'HttpUtil'.default.LOGERR, ResolveHostname);
@@ -571,14 +576,14 @@ function Timer()
 	{
 		bTimeout = true;
 		Logf("Connection timeout", class'HttpUtil'.default.LOGERR, fConnectTimout);
-		if (IsConnected()) Close();
-		LinkState = STATE_Initialized;
+		CloseSocket();
 		curState = HTTPState_Closed;
 		OnConnectionTimeout();
 	}
 }
 
-event Opened()
+/** will be called from HttpLink */
+function Opened()
 {
 	local int i;
 	Logf("Connection established", class'HttpUtil'.default.LOGINFO);
@@ -618,14 +623,14 @@ event Opened()
 	Logf("Request send", class'HttpUtil'.default.LOGINFO);
 }
 
-event Closed()
+function Closed()
 {
 	local int i;
 	FollowingRedir = RedirTrap;
 	if (Len(inBuffer) > 0) ProcInput(inBuffer);
 	if (!FollowingRedir)
 	{
-		Logf("Connection closed"@GetEnum(enum'ELinkState', LinkState), class'HttpUtil'.default.LOGINFO);
+		Logf("Connection closed", class'HttpUtil'.default.LOGINFO);
 		curState = HTTPState_Closed;
 		if (!bTimeout) OnComplete();
 	}
@@ -639,7 +644,33 @@ event Closed()
 	}
 }
 
-event ReceivedText( string Line )
+/** create the socket, if required */
+function bool CreateSocket()
+{
+	local class<HttpLink> linkclass;
+	if (HttpLink != none) return true;
+	linkclass = class<HttpLink>(DynamicLoadObject(HttpLinkClass, class'Class', false));
+	if (linkclass == none)
+	{
+		Logf("Error creating link class", class'HttpUtil'.default.LOGERR, HttpLinkClass);
+		return false;
+	}
+	HttpLink = spawn(linkclass);
+	HttpLink.setSocket(self);
+	Logf("Socket created", class'HttpUtil'.default.LOGINFO, HttpLink);
+	return true;
+}
+
+/** destroy the current socket */
+function CloseSocket()
+{
+	if (HttpLink.IsConnected()) HttpLink.Close();
+	HttpLink.Shutdown();
+	HttpLink = none;
+	Logf("Socket closed", class'HttpUtil'.default.LOGINFO);
+}
+
+function ReceivedText( string Line )
 {
 	local array<string> tmp;
 	local int i, datalen;
@@ -751,13 +782,13 @@ protected function SendData(string data, optional bool bFlush)
 {
 	if (Len(outBuffer) > BUFFERSIZE)
 	{
-		SendText(outBuffer);
+		HttpLink.SendText(outBuffer);
 		outBuffer = "";
 	}
 	outBuffer = outBuffer$data$CRLF;
 	if (bFlush)
 	{
-		SendText(outBuffer);
+		HttpLink.SendText(outBuffer);
 		outBuffer = "";
 	}
 }
@@ -796,4 +827,5 @@ defaultproperties
 	bProcCookies=false
 	bUseProxy=false
 	fConnectTimout=60
+	HttpLinkClass="LibHTTP2.HttpLink"
 }
