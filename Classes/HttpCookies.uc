@@ -1,4 +1,4 @@
-/**
+/*******************************************************************************
 	HttpCookies
 	Cookie management system. Part of [[LibHTTP]].
 
@@ -7,8 +7,8 @@
 
 	Authors:	Michiel 'El Muerte' Hendriks <elmuerte@drunksnipers.com>
 
-	$Id: HttpCookies.uc,v 1.4 2003/07/30 19:39:34 elmuerte Exp $
-*/
+	<!-- $Id: HttpCookies.uc,v 1.5 2004/03/14 17:37:31 elmuerte Exp $ -->
+*******************************************************************************/
 
 class HttpCookies extends Object config;
 
@@ -169,7 +169,7 @@ function bool ParseCookieData(string data, string rDomain, string rPath, optiona
 				}
 			}
 		}
-		if (bAdd) 
+		if (bAdd)
 		{
 			if (c.Domain == "") c.Domain = rDomain;
 			if (c.Path == "") c.Path = class'HttpUtil'.static.dirname(rPath);

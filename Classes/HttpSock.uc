@@ -1,7 +1,7 @@
 /*******************************************************************************
 	HttpSock
 	Base of [[LibHTTP]] this implements the main network methods for connecting
-	to a webserver and retreiving data from it
+	to a webserver and retreiving data from it. Binary data is not supported.
 
 	Features:
 	* GET/POST support
@@ -11,15 +11,18 @@
 	* Cookie management
 	* Support for HTTP Proxy
 
-	New in version 200:
+	new in version 200:
 	* Supports HTTP 1.1
+	* Cached resolves
+	* Redirection history
+	* Chuncked encoding automatically decoded
 
 	Dcoumentation and Information:
 		http://wiki.beyondunreal.com/wiki/LibHTTP
 
 	Authors:	Michiel 'El Muerte' Hendriks <elmuerte@drunksnipers.com>
 
-	<!-- $Id: HttpSock.uc,v 1.13 2004/03/14 11:08:51 elmuerte Exp $ -->
+	<!-- $Id: HttpSock.uc,v 1.14 2004/03/14 17:37:31 elmuerte Exp $ -->
 *******************************************************************************/
 
 class HttpSock extends TcpLink config;
@@ -46,6 +49,8 @@ var(URL) config int iPort;
 var(URL) config int iLocalPort;
 /** the username and password to use when authentication is required */
 var(URL) config string sAuthUsername, sAuthPassword;
+/** the default value for the Accept header, we only support "text / *" */
+var(URL) config string DefaultAccept;
 
 /** log verbosity */
 var(Options) config int iVerbose;
@@ -84,6 +89,17 @@ var HTTPCookies Cookies;
 /** The last returned HTTP status code */
 var int LastStatus;
 
+struct RequestHistoryEntry
+{
+	var string Method;
+	var string Hostname;
+	var string Location;
+	var int HTTPresponse;
+};
+/** history with requests for a single request, will contain more then one entry
+	when redirections are followed */
+var array<RequestHistoryEntry> RequestHistory;
+
 /** @ignore */
 var protected string inBuffer, outBuffer;
 /** @ignore */
@@ -118,6 +134,20 @@ enum HTTPState
 /** The current state of the socket */
 var HTTPState curState;
 
+/** resolve chache entry to speed up subsequent request */
+struct ResolveCacheEntry
+{
+	/** the hostname */
+	var string Hostname;
+	/** the address information */
+	var IpAddr Address;
+};
+/** Resolve cache, already resolved hostnames are not looked up.
+	You have to keep the actor alive in order to use this feature */
+var protected array<ResolveCacheEntry> ResolveCache;
+/** the hostname being resolved, used to add to the resolve cache */
+var protected string ResolveHostname;
+
 /**
 	will be called when the return code has been received;
 */
@@ -143,6 +173,20 @@ delegate bool OnResolved()
 delegate OnComplete();
 
 /**
+	Called before the connection is established
+*/
+delegate OnPreConnect();
+
+/**
+	Called before the redirection is followed, return false to prevernt following
+	the	redirection
+*/
+delegate bool OnFollowRedirect()
+{
+	return true;
+}
+
+/**
 	Start the HTTP request
 	location can be a fully qualified url, or just the location on the configured server
 	Method defaults to GET
@@ -154,6 +198,7 @@ function bool HttpRequest(string location, optional string Method, optional HTTP
 		Logf("HttpSock not closed", class'HttpUtil'.default.LOGERR, curState);
 		return false;
 	}
+	RequestHistory.length = 0;
 
 	if (Method == "") Method = "GET";
 	RequestMethod = Caps(Method);
@@ -173,13 +218,14 @@ function bool HttpRequest(string location, optional string Method, optional HTTP
 	}
 	if ((iPort <= 0) || (iPort >= 65536))
 	{
-		Logf("Chaning remote port to default (80)", class'HttpUtil'.default.LOGWARN, iPort);
+		Logf("Changing remote port to default (80)", class'HttpUtil'.default.LOGWARN, iPort);
 		iPort = 80;
 	}
 	// Add default headers
 	AddHeader("Host", sHostname);
 	AddHeader("User-Agent", UserAgent());
 	AddHeader("Connection", "close");
+	AddHeader("Accept", DefaultAccept);
 	if (sAuthUsername != "") AddHeader("Authorization", genBasicAuthorization(sAuthUsername, sAuthPassword));
 	if ((Method ~= "POST") && (InStr(RequestLocation, "?") > -1 ))
 	{
@@ -193,21 +239,7 @@ function bool HttpRequest(string location, optional string Method, optional HTTP
 	if (CookieData != none) Cookies = CookieData;
 	CRLF = Chr(13)$Chr(10);
 
-	if (bUseProxy)
-	{
-		if (sProxyHost == "")
-		{
-			Logf("No remote hostname", class'HttpUtil'.default.LOGERR);
-			return false;
-		}
-		if ((iProxyPort <= 0) || (iProxyPort >= 65536))
-		{
-			Logf("Chaning proxy port to default (80)", class'HttpUtil'.default.LOGWARN, iProxyPort);
-			iProxyPort = 80;
-		}
-		Resolve(sProxyHost);
-	}
-	else Resolve(sHostname);
+	return OpenConnection();
 }
 
 /**
@@ -320,6 +352,7 @@ function string getHTTPversion()
 
 /* Internal routines */
 
+/** manage logging */
 protected function Logf(coerce string message, optional int level, optional coerce string Param1, optional coerce string Param2)
 {
 	if (level == class'HttpUtil'.default.LOGERR) OnError(Message, Param1, Param2);
@@ -332,7 +365,8 @@ protected function string UserAgent()
 	return "LibHTTP/"$VERSION@"(UnrealEngine2; build "@Level.EngineVersion$"; http://wiki.beyondunreal.com/wiki/LibHTTP )";
 }
 
-protected function int DataSize(array<string> data)
+/** return the actual data size of a string array, it appends sizeof(CRLF) for each line */
+protected function int DataSize(out array<string> data)
 {
 	local int i, res;
 	res = 0;
@@ -391,10 +425,78 @@ protected function ParseRequestUrl(string location, string Method)
 	Logf("ParseRequestUrl", class'HttpUtil'.default.LOGINFO, "sHostname", sHostname);
 }
 
-/** hostname has been resolved */
-event Resolved( IpAddr Addr )
+/** start the download */
+protected function bool OpenConnection()
 {
 	local int i;
+	i = RequestHistory.Length;
+	RequestHistory.Length = i+1;
+	RequestHistory[i].Hostname = sHostname;
+	RequestHistory[i].Method = RequestMethod;
+	RequestHistory[i].Location = RequestLocation;
+	RequestHistory[i].HTTPresponse = 0; // none yet
+
+	if (bUseProxy)
+	{
+		if (sProxyHost == "")
+		{
+			Logf("No remote hostname", class'HttpUtil'.default.LOGERR);
+			return false;
+		}
+		if ((iProxyPort <= 0) || (iProxyPort >= 65536))
+		{
+			Logf("Chaning proxy port to default (80)", class'HttpUtil'.default.LOGWARN, iProxyPort);
+			iProxyPort = 80;
+		}
+		if (!CachedResolve(sProxyHost))
+		{
+			ResolveHostname = sProxyHost;
+			Resolve(sProxyHost);
+		}
+	}
+	else {
+		if (!CachedResolve(sHostname))
+		{
+			ResolveHostname = sHostname;
+			Resolve(sHostname);
+		}
+	}
+	return true;
+}
+
+/** lookup a chached resolve and connect if found */
+protected function bool CachedResolve(coerce string hostname, optional bool bDontConnect)
+{
+	local int i;
+	for (i = 0; i < ResolveCache.Length; i++)
+	{
+		if (ResolveCache[i].Hostname ~= hostname)
+		{
+			Logf("Resolve cache hit", class'HttpUtil'.default.LOGINFO, hostname, IpAddrToString(ResolveCache[i].Address));
+			ResolveHostname = hostname;
+			if (!bDontConnect) InternalResolved(ResolveCache[i].Address, true);
+			return true;
+		}
+	}
+	return false;
+}
+
+/** @ignore */
+event Resolved( IpAddr Addr )
+{
+	InternalResolved(Addr);
+}
+
+/** hostname has been resolved */
+protected function InternalResolved( IpAddr Addr , optional bool bDontCache)
+{
+	local int i;
+	if (!bDontCache)
+	{
+		ResolveCache.Length = ResolveCache.Length+1;
+		ResolveCache[ResolveCache.length-1].Hostname = ResolveHostname;
+		ResolveCache[ResolveCache.length-1].Address = Addr;
+	}
 	LocalLink.Addr = Addr.Addr;
 	if (bUseProxy) LocalLink.Port = iProxyPort;
 		else LocalLink.Port = iPort;
@@ -412,6 +514,8 @@ event Resolved( IpAddr Addr )
 	else BindPort();
 	LinkMode = MODE_Text;
 	ReceiveMode = RMODE_Event;
+
+	OnPreConnect();
 	curState = HTTPState_Connecting;
 	if (!Open(LocalLink))
 	{
@@ -467,6 +571,7 @@ event Opened()
 
 event Closed()
 {
+	local int i;
 	FollowingRedir = RedirTrap;
 	if (Len(inBuffer) > 0) ProcInput(inBuffer);
 	if (!FollowingRedir)
@@ -476,9 +581,12 @@ event Closed()
 		OnComplete();
 	}
 	else {
+		if (!OnFollowRedirect()) return;
 		CurRedir++;
 		if (iMaxRedir == CurRedir) Logf("MaxRedir reached", class'HttpUtil'.default.LOGWARN, iMaxRedir, CurRedir);
-		Resolve(sHostname);
+		i = RequestHistory.Length;
+		AddHeader("Referer", "http://"$RequestHistory[i].Hostname$RequestHistory[i].Location);
+		OpenConnection();
 	}
 }
 
@@ -527,6 +635,7 @@ protected function ProcInput(string inline)
 				FollowingRedir = true;
 				RedirTrap = false;
 			}
+			RequestHistory[RequestHistory.Length-1].HTTPresponse = retc;
 									// code       description    http/1.0
 			OnReturnCode(retc, tmp2[2], tmp2[0]);
 			LastStatus = retc;
@@ -633,6 +742,7 @@ defaultproperties
 	curState=HTTPState_Closed
 	iMaxRedir=5
 	HTTPVER="1.1"
+	DefaultAccept="text/*"
 	bSendCookies=true
 	bProcCookies=false
 	bUseProxy=false

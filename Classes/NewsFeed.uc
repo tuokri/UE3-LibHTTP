@@ -1,7 +1,7 @@
-/**
+/*******************************************************************************
 	NewsFeed
 	RSS\RDF Porcessing. Part of [[LibHTTP]].
-	Either RSS or RDF format is accepted. 
+	Either RSS or RDF format is accepted.
 	''Note:'' the HTML special chars are NOT fixed, you have to do this yourself
 	''Note:'' Don't pound the webserver with requests, cache your results
 
@@ -10,8 +10,8 @@
 
 	Authors:	Michiel 'El Muerte' Hendriks <elmuerte@drunksnipers.com>
 
-	$Id: NewsFeed.uc,v 1.5 2003/07/31 08:34:28 elmuerte Exp $
-*/
+	<!-- $Id: NewsFeed.uc,v 1.6 2004/03/14 17:37:31 elmuerte Exp $ -->
+*******************************************************************************/
 
 class NewsFeed extends Object;
 
@@ -54,7 +54,7 @@ function int ParseRDFData(array<string> inp)
 /** get another word from the buffer */
 protected function string getWord()
 {
-	local string res;	
+	local string res;
 	while (res == "")
 	{
 		if (wordno >= line.length) if (!getLine()) return "";
@@ -69,7 +69,7 @@ protected function bool getLine()
 {
 	local string tmp;
 	if (lineno >= data.length) return false;
-	tmp = data[lineno];	
+	tmp = data[lineno];
 	class'HttpUtil'.static.ReplaceChar(tmp, Chr(9), " ");
 	class'HttpUtil'.static.ReplaceChar(tmp, "<", " <");
 	class'HttpUtil'.static.ReplaceChar(tmp, ">", "> ");
@@ -108,7 +108,7 @@ protected function string getToNextTag()
 {
 	local string res, s;
 	s = getWord();
-	while (Left(s, 1) != "<") 
+	while (Left(s, 1) != "<")
 	{
 		if (res != "") res = res$" ";
 		res = res$s;
