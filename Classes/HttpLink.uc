@@ -13,7 +13,7 @@
 	Released under the Lesser Open Unreal Mod License							<br />
 	http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense				<br />
 
-	<!-- $Id: HttpLink.uc,v 1.1 2004/03/26 15:29:48 elmuerte Exp $ -->
+	<!-- $Id: HttpLink.uc,v 1.2 2004/03/26 22:38:44 elmuerte Exp $ -->
 *******************************************************************************/
 
 class HttpLink extends TcpLink;
@@ -31,7 +31,7 @@ function setSocket(HttpSock Sock)
 function Shutdown()
 {
 	HttpSock = none;
-	//Destroy();
+	Destroy();
 }
 
 /** @ignore */
