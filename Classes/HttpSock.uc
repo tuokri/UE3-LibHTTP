@@ -22,7 +22,7 @@
 	new in version 300:															<br />
 	* Improved easy of use:
 		get(), post(), head()													<br />
-	* Support for multipart/form-data											<br />
+	* Support for multipart/form-data POST data									<br />
 																				<br />
 	Dcoumentation and Information:
 		http://wiki.beyondunreal.com/wiki/LibHTTP								<br />
@@ -33,7 +33,7 @@
 	Released under the Lesser Open Unreal Mod License							<br />
 	http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense				<br />
 
-	<!-- $Id: HttpSock.uc,v 1.21 2004/09/14 11:12:48 elmuerte Exp $ -->
+	<!-- $Id: HttpSock.uc,v 1.22 2004/09/16 14:33:40 elmuerte Exp $ -->
 *******************************************************************************/
 /*
 	TODO:
@@ -177,6 +177,9 @@ var protected array<string> authBasicLookup;
 var protected int TZoffset;
 
 /** @ignore */
+var protected string MultiPartBoundary;
+
+/** @ignore */
 var protected int chunkedCounter; // to count the current chunk
 /** @ignore */
 var protected bool bIsChunked; // if Transfer-Encoding: chunked
@@ -304,7 +307,8 @@ function bool post(string location, optional string PostData)
 	Perform a HTTP POST request using an array containing the postdata.
 	if the array length > 0 it will overwrite the current post data.
 	It will send the post data AS IS and doesn't set the content-type. <br />
-	You might want to use this function together with <code>setFormData();</code>
+	You might want to use the <code>post();</code> function together with
+	<code>setFormData();</code>, that method is easier to use.
 */
 function bool postex(string location, optional array<string> PostData)
 {
@@ -320,10 +324,44 @@ function bool postex(string location, optional array<string> PostData)
 	have to escape the data. <br />
 	It will also force the content type to <code>multipart/form-data</code>.
 */
-function bool setFormData(string field, array<string> data, optional string contentType, optional string contentEncoding)
+function bool setFormDataEx(string field, array<string> data, optional string contentType, optional string contentEncoding)
 {
-	//TODO: implement
+	local int n, i;
+	if (MultiPartBoundary == "") MultiPartBoundary = "AaB03x"; //TODO create random
+	AddHeader("Content-Type", "multipart/form-data; boundary="$MultiPartBoundary);
+	n = RequestData.length;
+	if (n > 0) n--; // remove previous end
+	RequestData[n++] = "--"$MultiPartBoundary;
+	RequestData[n++] = "Content-Disposition: form-data; name="$field;
+	if (contentType != "") RequestData[n++] = "Content-Type: "@contentType;
+	if (contentEncoding != "") RequestData[n++] = "Content-Encoding: "@contentEncoding;
+	RequestData[n++] = "";
+	for (i = 0; i < data.length; i++)
+	{
+		RequestData[n++] = data[i];
+	}
+	RequestData[n++] = "--"$MultiPartBoundary$"--"; // add "end"
 	return true;
+}
+
+/**
+	Simple form of <code>setFormDataEx</code> when the data is only one line
+*/
+function bool setFormData(string field, string data, optional string contentType, optional string contentEncoding)
+{
+	local array<string> adata;
+	adata[0] = data;
+	return setFormDataEx(field, adata, contentType, contentEncoding);
+}
+
+/**
+	This will clear the POST data. Use this before calling <code>setFormData</code>
+*/
+function bool clearFormData()
+{
+	MultiPartBoundary = "";
+	RequestData.length = 0;
+	return (RequestData.length == 0);
 }
 
 /**
@@ -653,7 +691,6 @@ protected function bool CachedResolve(coerce string hostname, optional bool bDon
 /** hostname has been resolved */
 function InternalResolved( InternetLink.IpAddr Addr , optional bool bDontCache)
 {
-	local int i;
 	Logf("Host resolved succesfully", class'HttpUtil'.default.LOGINFO, ResolveHostname);
 	if (!bDontCache)
 	{
@@ -724,16 +761,17 @@ function Timer()
 /** will be called from HttpLink */
 function Opened()
 {
-	local int i;
+	local int i, totalDataSize;
 	Logf("Connection established", class'HttpUtil'.default.LOGINFO);
 	curState = HTTPState_SendingRequest;
 	inBuffer = ""; // clear buffer
 	outBuffer = ""; // clear buffer
 	if (bUseProxy) SendData(RequestMethod@"http://"$sHostname$":"$string(iPort)$RequestLocation@"HTTP/"$HTTPVER);
 		else SendData(RequestMethod@RequestLocation@"HTTP/"$HTTPVER);
+	totalDataSize = DataSize(RequestData);
 	if ((RequestMethod ~= HTTP_POST) || (RequestMethod ~= HTTP_PUT))
 	{
-		AddHeader("Content-Length", string(DataSize(RequestData)));
+		AddHeader("Content-Length", string(totalDataSize));
 	}
 	if (bSendCookies && (Cookies != none))
 	{
@@ -743,7 +781,7 @@ function Opened()
 	{
 		SendData(RequestHeaders[i]);
 	}
-	if ((RequestMethod ~= HTTP_POST) || (RequestMethod ~= HTTP_PUT))
+	if (((RequestMethod ~= HTTP_POST) || (RequestMethod ~= HTTP_PUT)) && (totalDataSize > 0))
 	{
 		SendData("");
 		for (i = 0; i < RequestData.length; i++)
@@ -836,7 +874,7 @@ protected function ProcInput(string inline)
 {
 	local array<string> tmp2;
 	local int retc, i;
-	Logf("Received data", class'HttpUtil'.default.LOGDATA, procHeader, len(inline)$"::"@inline);
+	Logf("Received data", class'HttpUtil'.default.LOGDATA, procHeader@len(inline), inline);
 	if (procHeader)
 	{
 		if (inline == "")
@@ -921,6 +959,7 @@ protected function ProcInput(string inline)
 */
 protected function SendData(string data, optional bool bFlush)
 {
+	Logf("Send data", class'HttpUtil'.default.LOGDATA, bFlush@len(data), data);
 	if (Len(outBuffer)+len(data) > BUFFERSIZE)
 	{
 		HttpLink.SendText(outBuffer);
