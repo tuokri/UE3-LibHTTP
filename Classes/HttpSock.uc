@@ -9,19 +9,17 @@
 	* Basic Authentication support
 	* Header management
 	* Cookie management
+	* Support for HTTP Proxy
 
 	Authors:	Michiel 'El Muerte' Hendriks <elmuerte@drunksnipers.com>
 
-	$Id: HttpSock.uc,v 1.7 2003/07/30 12:52:53 elmuerte Exp $
-
-	TODO:
-	- add proxy support
+	$Id: HttpSock.uc,v 1.8 2003/07/30 14:37:03 elmuerte Exp $
 */
 
 class HttpSock extends TcpLink config;
 
 /** LibHTTP version number */
-const VERSION = 103;
+const VERSION = 104;
 
 /** the output buffer size */
 const BUFFERSIZE = 2048;
@@ -52,6 +50,12 @@ var config int iMaxRedir;
 var config bool bSendCookies;
 /** Process incoming cookies, defaults to false */
 var config bool bProcCookies;
+/** Use a proxy server */
+var config bool bUseProxy;
+/** The hostname of the proxy */
+var config string sProxyHost;
+/** The proxy port */
+var config int iProxyPort;
 
 /* local variables */
 
@@ -153,7 +157,7 @@ function bool HttpRequest(string location, optional string Method, optional HTTP
 	}
 	if ((iPort <= 0) || (iPort >= 65536))
 	{
-		Logf("Chaning remote port to default", class'HttpUtil'.default.LOGWARN, iPort);
+		Logf("Chaning remote port to default (80)", class'HttpUtil'.default.LOGWARN, iPort);
 		iPort = 80;
 	}
 	// Add default headers
@@ -172,7 +176,22 @@ function bool HttpRequest(string location, optional string Method, optional HTTP
 	CurRedir = 0;
 	if (CookieData != none) Cookies = CookieData;
 	CRLF = Chr(13)$Chr(10);
-	Resolve(sHostname);
+
+	if (bUseProxy) 
+	{
+		if (sProxyHost == "")
+		{
+			Logf("No remote hostname", class'HttpUtil'.default.LOGERR);
+			return false;
+		}
+		if ((iProxyPort <= 0) || (iProxyPort >= 65536))
+		{
+			Logf("Chaning proxy port to default (80)", class'HttpUtil'.default.LOGWARN, iProxyPort);
+			iProxyPort = 80;
+		}
+		Resolve(sProxyHost);
+	}
+	else Resolve(sHostname);
 }
 
 /**
@@ -338,7 +357,8 @@ event Resolved( IpAddr Addr )
 {
 	local int i;
 	LocalLink.Addr = Addr.Addr;
-	LocalLink.Port = iPort;
+	if (bUseProxy) LocalLink.Port = iProxyPort;
+		else LocalLink.Port = iPort;
 	if (!OnResolved()) 
 	{
 		Logf("Request aborted", class'HttpUtil'.default.LOGWARN, "OnResolved() == false");
@@ -373,7 +393,8 @@ event Opened()
   Logf("Connection established", class'HttpUtil'.default.LOGINFO);
 	inBuffer = ""; // clear buffer
 	outBuffer = ""; // clear buffer
-	SendData(RequestMethod@RequestLocation@"HTTP/"$HTTPVER);
+	if (bUseProxy) SendData(RequestMethod@"http://"$sHostname$":"$string(iPort)$RequestLocation@"HTTP/"$HTTPVER);
+		else SendData(RequestMethod@RequestLocation@"HTTP/"$HTTPVER);
 	if ((RequestMethod ~= "POST") || (RequestMethod ~= "PUT"))
 	{
 		AddHeader("Content-Length", string(DataSize(RequestData)));
@@ -596,4 +617,5 @@ defaultproperties
 	HTTPVER="1.0"
 	bSendCookies=true
 	bProcCookies=false
+	bUseProxy=false
 }
