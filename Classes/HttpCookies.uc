@@ -11,17 +11,23 @@
 	Released under the Lesser Open Unreal Mod License							<br />
 	http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense				<br />
 
-	<!-- $Id: HttpCookies.uc,v 1.6 2004/03/17 00:17:09 elmuerte Exp $ -->
+	<!-- $Id: HttpCookies.uc,v 1.7 2004/09/14 11:12:48 elmuerte Exp $ -->
 *******************************************************************************/
 
-class HttpCookies extends Object config;
+class HttpCookies extends Object config parseconfig;
 
+/** cookie entry */
 struct HTTPCookie
 {
+	/** the cookie name */
 	var string name;
+	/** the current value */
 	var string value;
+	/** exprises timestamp */
 	var int expires;
+	/** available to domain */
 	var string domain;
+	/** path in the domain */
 	var string path;
 };
 
