@@ -1,13 +1,21 @@
 /**
 	HttpUtil
-	Static functions used in all classes. Part of [[LibHTTP]].
+	Static functions. Part of [[LibHTTP]].
 
 	Authors:	Michiel 'El Muerte' Hendriks <elmuerte@drunksnipers.com>
 
-	$Id: HttpUtil.uc,v 1.2 2003/07/29 14:13:21 elmuerte Exp $
+	$Id: HttpUtil.uc,v 1.3 2003/07/30 12:52:53 elmuerte Exp $
 */
 
 class HttpUtil extends Object;
+
+/* log levels */
+var const int LOGERR;
+var const int LOGWARN;
+var const int LOGINFO;
+var const int LOGDATA;
+
+var array<string> MonthNames;
 
 /**
 	Encode special characters, you should not use this function, it's slow and not
@@ -153,4 +161,111 @@ static final function int timestamp(int year, int mon, int day, int hour, int mi
 	    )*24 + (hour-1) /* now have hours */
 	   )*60 + min  /* now have minutes */
 	  )*60 + sec; /* finally seconds */
+}
+
+/** 
+	Parse a string to a timestamp
+	The date string is formatted as: Wdy, DD-Mon-YYYY HH:MM:SS GMT
+	TZoffset is the local offset to GMT
+*/
+static final function int stringToTimestamp(string datestring, optional int TZoffset)
+{
+	local array<string> data, datePart, timePart;
+	local int i;
+	split(datestring, " ", data);
+	if (data.length == 6) // date is in spaced format
+	{
+		data[1] = data[1]$"-"$data[2]$"-"$data[3];
+		data[2] = data[4];
+		data[3] = data[5];
+		data.length = 4;
+	}
+	if (data.length == 4)
+	{
+		if (split(data[1], "-", datePart) != 3) return 0;
+		if (split(data[2], ":", timePart) != 3) return 0;
+		// find month offset
+		for (i = 1; i < default.MonthNames.length; i++)
+		{
+			if (default.MonthNames[i] ~= datePart[1])
+			{
+				datePart[1] = string(i);
+				break;
+			}
+		}
+		if (Len(datePart[2]) == 2) datePart[2] = "20"$datePart[2];
+		return timestamp(int(datePart[2]), int(datePart[1]), int(datePart[0]), int(timePart[0])+TZoffset+TZtoOffset(data[3]), int(timePart[1]), int(timePart[2]));
+	}
+	return 0;
+}
+
+/**
+	Converts a timezone to an offset
+*/
+static final function int TZtoOffset(string TZ)
+{
+	if (TZ ~= "GMT") return 0;
+	else if (TZ ~= "CET") return 1;
+	else if (TZ ~= "CEST") return 2;
+	return int(tz);
+
+}
+
+/**	Trim leading and trailing spaces */
+static final function string Trim(coerce string S)
+{
+    while (Left(S, 1) == " ") S = Right(S, Len(S) - 1);
+		while (Right(S, 1) == " ") S = Left(S, Len(S) - 1);
+    return S;
+}
+
+/** Write a log entry */
+static final function Logf(name Comp, coerce string message, optional int level, optional coerce string Param1, optional coerce string Param2)
+{
+	message = message@chr(9)@param1@chr(9)@Param2;
+	if (Len(message) > 512) message = Left(message, 512)@"..."; // trim message (crash protection)
+	Log(Comp$"["$level$"] :"@message, 'LibHTTP');
+}
+
+/** get the dirname of a filename, with traling slash */
+static final function string dirname(string filename)
+{
+	local array<string> parts;
+	local int i;
+	split(filename, "/", parts);
+	filename = "";
+	for (i = 0; i < parts.length-1; i++)
+	{
+		filename = filename$parts[i]$"/";
+	}
+	return filename;
+}
+
+/** get the base filename */
+static final function string basename(string filename)
+{
+	local array<string> parts;
+	if (split(filename, "/", parts) > 0) return parts[parts.length-1];
+	return filename;
+}
+
+defaultproperties
+{
+	LOGERR=0
+	LOGWARN=1
+	LOGINFO=2
+	LOGDATA=3
+
+	MonthNames[1]="Jan"
+	MonthNames[2]="Feb"
+	MonthNames[3]="Mar"
+	MonthNames[4]="Apr"
+	MonthNames[5]="May"
+	MonthNames[6]="Jun"
+	MonthNames[7]="Jul"
+	MonthNames[8]="Aug"
+	MonthNames[9]="Sep"
+	MonthNames[10]="Oct"
+	MonthNames[11]="Nov"
+	MonthNames[12]="Dec"
 }

@@ -12,13 +12,16 @@
 
 	Authors:	Michiel 'El Muerte' Hendriks <elmuerte@drunksnipers.com>
 
-	$Id: HttpSock.uc,v 1.6 2003/07/29 14:13:21 elmuerte Exp $
+	$Id: HttpSock.uc,v 1.7 2003/07/30 12:52:53 elmuerte Exp $
+
+	TODO:
+	- add proxy support
 */
 
 class HttpSock extends TcpLink config;
 
 /** LibHTTP version number */
-const VERSION = 102;
+const VERSION = 103;
 
 /** the output buffer size */
 const BUFFERSIZE = 2048;
@@ -83,10 +86,8 @@ var protected int CurRedir;
 /** @ingore */
 var protected array<string> authBasicLookup;
 
-/* log levels */
-const LOGERR = 0;
-const LOGWARN = 1;
-const LOGINFO = 2;
+/** Timezone Offset, dynamically calculated from the server's time */
+var protected int TZoffset;
 
 enum HTTPState {
 		HTTPState_Resolving,
@@ -125,14 +126,12 @@ delegate OnComplete();
 	Start the HTTP request
 	location can be a fully qualified url, or just the location on the configured server
 	Method defaults to GET
-	Headers are additional headers to send, adviced is to use AddHeader
 */
-function bool HttpRequest(string location, optional string Method, optional array<string> Headers, optional HTTPCookies CookieData)
+function bool HttpRequest(string location, optional string Method, optional HTTPCookies CookieData)
 {
-	local int i, j;
 	if (curState != HTTPState_Closed)
 	{
-		Logf("HttpSock not closed", LOGERR, curState);
+		Logf("HttpSock not closed", class'HttpUtil'.default.LOGERR, curState);
 		return false;
 	}
 
@@ -143,33 +142,24 @@ function bool HttpRequest(string location, optional string Method, optional arra
 	if (Left(location, 4) ~= "http") ParseRequestUrl(location, Method);
 	else if (Left(location, 1) != "/")
 	{
-		Logf("Unsupported location", LOGERR, location);
+		Logf("Unsupported location", class'HttpUtil'.default.LOGERR, location);
 		return false;
 	}
 	else RequestLocation = location;	
 	if (sHostname == "")
 	{
-		Logf("No remote hostname", LOGERR);
+		Logf("No remote hostname", class'HttpUtil'.default.LOGERR);
 		return false;
 	}
 	if ((iPort <= 0) || (iPort >= 65536))
 	{
-		Logf("Chaning remote port to default", LOGWARN, iPort);
+		Logf("Chaning remote port to default", class'HttpUtil'.default.LOGWARN, iPort);
 		iPort = 80;
 	}
 	// Add default headers
 	AddHeader("Host", sHostname);
 	AddHeader("User-Agent", UserAgent());
-	AddHeader("Connection", "close");
-	// Add aditional headers
-	for (i = 0; i < headers.length; i++)
-	{
-		j = InStr(headers[i], ":");
-		if (j > 0)
-		{
-			AddHeader(Left(headers[i], j-1), Mid(headers[i], j));
-		}
-	}
+	AddHeader("Connection", "close");	
 	if (sAuthUsername != "") AddHeader("Authorization", genBasicAuthorization(sAuthUsername, sAuthPassword));
 	if ((Method ~= "POST") && (InStr(RequestLocation, "?") > -1 ))
 	{
@@ -180,7 +170,7 @@ function bool HttpRequest(string location, optional string Method, optional arra
 	// start resolve
 	curState = HTTPState_Resolving;
 	CurRedir = 0;
-	Cookies = CookieData;
+	if (CookieData != none) Cookies = CookieData;
 	CRLF = Chr(13)$Chr(10);
 	Resolve(sHostname);
 }
@@ -274,13 +264,8 @@ function bool Abort()
 
 protected function Logf(coerce string message, optional int level, optional coerce string Param1, optional coerce string Param2)
 {
-	if (level == LOGERR) OnError(Message, Param1, Param2);
-	if (level <= iVerbose) 
-	{
-		message = message@chr(9)@param1@chr(9)@Param2;
-		if (Len(message) > 512) message = Left(message, 512)@"..."; // trim message (crash protection)
-		Log(Name$":"@message, 'LibHTTP');
-	}
+	if (level == class'HttpUtil'.default.LOGERR) OnError(Message, Param1, Param2);
+	if (level <= iVerbose) class'HttpUtil'.static.Logf(Name, Message, Level, Param1, Param2);
 }
 
 /** Returns the useragent string we use */
@@ -306,7 +291,7 @@ protected function bool IsSupportedMethod()
 	if (RequestMethod ~= "GET") return true;
 	else if (RequestMethod ~= "HEAD") return true;
 	else if (RequestMethod ~= "POST") return true;
-	Logf("Unsupported method", LOGERR, RequestMethod);
+	Logf("Unsupported method", class'HttpUtil'.default.LOGERR, RequestMethod);
 	return false;
 }
 
@@ -322,7 +307,7 @@ protected function ParseRequestUrl(string location, string Method)
 		location = Left(location, i);
 	}
 	else RequestLocation = "/"; // get index
-	Logf("ParseRequestUrl", LOGINFO, "RequestLocation", RequestLocation);
+	Logf("ParseRequestUrl", class'HttpUtil'.default.LOGINFO, "RequestLocation", RequestLocation);
 	i = InStr(location, "@");
 	if (i > -1)
 	{
@@ -333,19 +318,19 @@ protected function ParseRequestUrl(string location, string Method)
 		{			
 			sAuthPassword = Mid(sAuthUsername, j+1);
 			sAuthUsername = Left(sAuthUsername, j);
-			Logf("ParseRequestUrl", LOGINFO, "sAuthPassword", sAuthPassword);
+			Logf("ParseRequestUrl", class'HttpUtil'.default.LOGINFO, "sAuthPassword", sAuthPassword);
 		}
-		Logf("ParseRequestUrl", LOGINFO, "sAuthUsername", sAuthUsername);
+		Logf("ParseRequestUrl", class'HttpUtil'.default.LOGINFO, "sAuthUsername", sAuthUsername);
 	}
 	i = InStr(location, ":");
 	if (i > -1)
 	{
 		iPort = int(Mid(iPort, i));
-		Logf("ParseRequestUrl", LOGINFO, "iPort", iPort);
+		Logf("ParseRequestUrl", class'HttpUtil'.default.LOGINFO, "iPort", iPort);
 		location = Left(location, i);
 	}
 	sHostname = location;
-	Logf("ParseRequestUrl", LOGINFO, "sHostname", sHostname);
+	Logf("ParseRequestUrl", class'HttpUtil'.default.LOGINFO, "sHostname", sHostname);
 }
 
 /** hostname has been resolved */
@@ -356,14 +341,14 @@ event Resolved( IpAddr Addr )
 	LocalLink.Port = iPort;
 	if (!OnResolved()) 
 	{
-		Logf("Request aborted", LOGWARN, "OnResolved() == false");
+		Logf("Request aborted", class'HttpUtil'.default.LOGWARN, "OnResolved() == false");
 		curState = HTTPState_Closed;
 		return;
 	}
 	if (iLocalPort > 0) 
 	{
 		i = BindPort(iLocalPort, true);
-		if (i != iLocalPort) Logf("Could not bind preference port", LOGWARN, iLocalPort);
+		if (i != iLocalPort) Logf("Could not bind preference port", class'HttpUtil'.default.LOGWARN, iLocalPort);
 	}
 	else BindPort();
   LinkMode = MODE_Text;
@@ -371,21 +356,21 @@ event Resolved( IpAddr Addr )
 	curState = HTTPState_Connecting;
   if (!Open(LocalLink))
 	{
-		Logf("Open() failed", LOGERR);
+		Logf("Open() failed", class'HttpUtil'.default.LOGERR);
 		curState = HTTPState_Closed;
 	}
 }
 
 event ResolveFailed()
 {
-  Logf("Resolve failed", LOGERR, sHostname);
+  Logf("Resolve failed", class'HttpUtil'.default.LOGERR, sHostname);
 	curState = HTTPState_Closed;
 }
 
 event Opened()
 {
 	local int i;
-  Logf("Connection established", LOGINFO);
+  Logf("Connection established", class'HttpUtil'.default.LOGINFO);
 	inBuffer = ""; // clear buffer
 	outBuffer = ""; // clear buffer
 	SendData(RequestMethod@RequestLocation@"HTTP/"$HTTPVER);
@@ -415,7 +400,7 @@ event Opened()
 	procHeader = true;
 	FollowingRedir = false;
 	RedirTrap = false;
-	Logf("Request send", LOGINFO);
+	Logf("Request send", class'HttpUtil'.default.LOGINFO);
 }
 
 event Closed()
@@ -424,13 +409,13 @@ event Closed()
 	if (Len(inBuffer) > 0) ProcInput(inBuffer);
 	if (!FollowingRedir)
 	{
-		Logf("Connection closed", LOGINFO);
+		Logf("Connection closed", class'HttpUtil'.default.LOGINFO);
 		curState = HTTPState_Closed;
 		OnComplete();
 	}
 	else {
 		CurRedir++;
-		if (iMaxRedir == CurRedir) Logf("MaxRedir reached", LOGWARN, iMaxRedir, CurRedir);
+		if (iMaxRedir == CurRedir) Logf("MaxRedir reached", class'HttpUtil'.default.LOGWARN, iMaxRedir, CurRedir);
 		Resolve(sHostname);
 	}
 }
@@ -457,8 +442,8 @@ event ReceivedText( string Line )
 protected function ProcInput(string inline)
 {
 	local array<string> tmp2;
-	local int retc;
-	Logf("Received data", LOGINFO+1, inline, procHeader);
+	local int retc, i;
+	Logf("Received data", class'HttpUtil'.default.LOGDATA, inline, procHeader);
 	if (procHeader)
 	{
 		if (ReturnHeaders.length == 0) 
@@ -467,7 +452,7 @@ protected function ProcInput(string inline)
 			retc = int(tmp2[1]);
 			if (bFollowRedirect && ((retc == 301) || (retc == 302)) && (iMaxRedir > CurRedir))
 			{
-				Logf("Redirecting", LOGINFO, retc);
+				Logf("Redirecting", class'HttpUtil'.default.LOGINFO, retc);
 				FollowingRedir = true;
 				RedirTrap = false;
 			}
@@ -477,21 +462,39 @@ protected function ProcInput(string inline)
 		ReturnHeaders[ReturnHeaders.length] = inline;
 
 		// if following redirection find new location
+		retc = InStr(inline, ":");
 		if (FollowingRedir)
-		{
-			retc = InStr(inline, ":");
+		{			
 			if (Left(inline, retc) ~= "location")
 			{
-				Logf("Redirect Location", LOGINFO, inline);
-				RequestLocation = Trim(Mid(inline, retc+1));
+				Logf("Redirect Location", class'HttpUtil'.default.LOGINFO, inline);
+				RequestLocation = class'HttpUtil'.static.Trim(Mid(inline, retc+1));
 				if (Left(RequestLocation, 4) ~= "http") ParseRequestUrl(RequestLocation, RequestMethod);
 				AddHeader("Host", sHostname); // make sure the new host is set
 				if (RequestMethod ~= "POST") // can't redir a post request
 				{
-					Logf("Changing request method to post", LOGWARN);
+					Logf("Changing request method to post", class'HttpUtil'.default.LOGWARN);
 					RequestMethod = "GET";
 				}
 				RedirTrap = true;
+			}
+		}
+		if (bProcCookies && (Cookies != none))
+		{
+			if (Left(inline, retc) ~= "set-cookie")
+			{
+				Cookies.ParseCookieData(Mid(inline, retc+1), sHostname, RequestLocation, now(), true, TZoffset);
+			}
+		}
+		if (Left(inline, retc) ~= "date")
+		{
+			// calculate timezone offset
+			i = class'HttpUtil'.static.stringToTimestamp(class'HttpUtil'.static.trim(Mid(inline, retc+1)));
+			Logf("Server date", class'HttpUtil'.default.LOGINFO, i);
+			if (i != 0)
+			{
+				TZoffset = (now()-i)/3600;
+				Logf("Timezone offset", class'HttpUtil'.default.LOGINFO, TZoffset);
 			}
 		}
 		if (inline == "") procHeader = false;
@@ -499,14 +502,6 @@ protected function ProcInput(string inline)
 	else {
 		ReturnData[ReturnData.length] = inline;
 	}
-}
-
-/**	Trim leading and trailing spaces */
-static final function string Trim(coerce string S)
-{
-    while (Left(S, 1) == " ") S = Right(S, Len(S) - 1);
-		while (Right(S, 1) == " ") S = Left(S, Len(S) - 1);
-    return S;
 }
 
 /**
@@ -579,7 +574,7 @@ protected function string genBasicAuthorization(string Username, string Password
 	{
 		res = res$outp[i];
 	}	
-	Logf("Base 64 encoding", LOGINFO, Username$":"$Password, res);
+	Logf("Base 64 encoding", class'HttpUtil'.default.LOGINFO, Username$":"$Password, res);
 	return "Basic"@res;
 }
 
