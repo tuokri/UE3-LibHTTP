@@ -1,9 +1,9 @@
 /*******************************************************************************
 	HttpUtil																	<br />
 	Miscelaneous static functions. Part of [[LibHTTP]].							<br />
-	Contains various algorithms, under which Base64 encoding and [[MD5]] hash
-	generation.																	<br />
-	[[MD5 ]]code by Petr Jelinek ( http://wiki.beyondunreal.com/wiki/MD5 )		<br />
+	Contains various algorithms, under which [[Base64]] encoding and [[MD5]]
+	hash generation.															<br />
+	[[MD5]] code by Petr Jelinek ( http://wiki.beyondunreal.com/wiki/MD5 )		<br />
 																				<br />
 	Dcoumentation and Information:
 		http://wiki.beyondunreal.com/wiki/LibHTTP								<br />
@@ -14,7 +14,7 @@
 	Released under the Lesser Open Unreal Mod License							<br />
 	http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense				<br />
 
-	<!-- $Id: HttpUtil.uc,v 1.13 2004/09/25 10:13:04 elmuerte Exp $ -->
+	<!-- $Id: HttpUtil.uc,v 1.14 2004/09/25 15:37:41 elmuerte Exp $ -->
 *******************************************************************************/
 
 class HttpUtil extends Object;

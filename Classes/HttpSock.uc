@@ -48,7 +48,7 @@
 	Released under the Lesser Open Unreal Mod License							<br />
 	http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense				<br />
 
-	<!-- $Id: HttpSock.uc,v 1.29 2004/09/25 10:13:04 elmuerte Exp $ -->
+	<!-- $Id: HttpSock.uc,v 1.30 2004/09/25 15:37:41 elmuerte Exp $ -->
 *******************************************************************************/
 
 class HttpSock extends Info config;
@@ -68,7 +68,6 @@ const HTTP_OPTIONS 	= "OPTIONS";
 const HTTP_POST 	= "POST";
 const HTTP_PUT 		= "PUT";
 const HTTP_TRACE	= "TRACE";
-
 
 /** constant CR LF */
 var protected string CRLF;
@@ -828,6 +827,7 @@ protected function bool OpenConnection()
 		{
 			AddHeader("Proxy-Authorization", genAuthorization(ProxyAuthMethod, sProxyUser, sProxyPass, ProxyAuthInfo));
 		}
+		AddHeader("Proxy-Connection", "close");
 		if (!CachedResolve(sProxyHost))
 		{
 			curState = HTTPState_Resolving;

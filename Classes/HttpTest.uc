@@ -5,7 +5,7 @@
 	Released under the Lesser Open Unreal Mod License							<br />
 	http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense				<br />
 
-	<!-- $Id: HttpTest.uc,v 1.4 2004/09/24 07:57:55 elmuerte Exp $ -->
+	<!-- $Id: HttpTest.uc,v 1.5 2004/09/25 15:37:41 elmuerte Exp $ -->
 *******************************************************************************/
 class HttpTest extends Info;
 
@@ -18,6 +18,7 @@ enum EHttpTests
 	HT_AUTH,
 	HT_FASTGET,
 	HT_TRACE,
+	HT_PROXY,
 };
 var config array<EHttpTests> Tests;
 
@@ -45,6 +46,22 @@ struct AuthEntry
 };
 /** auth tests */
 var config array<AuthEntry> AuthUrls;
+
+struct ProxyConfig
+{
+	/** proxy host */
+	var string host;
+	/** proxy port */
+	var int port;
+	/** proxy username */
+	var string username;
+	/** proxy password */
+	var string password;
+	/** url to fetch via the proxy */
+	var string url;
+};
+/** proxy tests */
+var config array<ProxyConfig> ProxyTests;
 
 /** current test */
 var int TestId;
@@ -84,6 +101,7 @@ function RunTest()
 	sock.TransferMode = TM_Normal; // reset
 	sock.AuthMethod = AM_None; // reset
 	sock.ClearRequestData();
+	sock.bUseProxy = false;
 	switch (Tests[TestId])
 	{
 		case HT_GET:
@@ -103,6 +121,9 @@ function RunTest()
 			break;
 		case HT_TRACE:
 			testTrace();
+			break;
+		case HT_PROXY:
+			testProxy();
 			break;
 	}
 }
@@ -238,36 +259,25 @@ function testTrace()
 	sock.httrace(FastUrls[TestIteration++]);
 }
 
+/** proxy test, will automatically use AM_Basic if a username is set */
+function testProxy()
+{
+	if (TestIteration >= ProxyTests.Length)
+	{
+		NextTest();
+		return;
+	}
+	sock.sProxyHost = ProxyTests[TestIteration].host;
+	sock.iProxyPort = ProxyTests[TestIteration].port;
+	sock.sProxyUser = ProxyTests[TestIteration].username;
+	sock.sProxyPass = ProxyTests[TestIteration].password;
+	sock.bUseProxy = true;
+	if (sock.sProxyUser != "") sock.ProxyAuthMethod = AM_Basic;
+	sock.get(ProxyTests[TestIteration].url);
+	TestIteration++;
+}
+
 defaultproperties
 {
-	GetUrls[0]="http://www.google.com" // set's cookie, and mostliky redirect
-	GetUrls[1]="http://el-muerte.student.utwente.nl/test/__php_info.php"
-	GetUrls[2]="http://r.elmuerte.com" // redirect
-	GetUrls[3]="http://el-muerte.student.utwente.nl/test/__php_info.php?some=var&and=another+item&last=one%20the%20end"
-
-	HeadUrls[0]="http://www.google.com"
-	HeadUrls[1]="http://el-muerte.student.utwente.nl/test/__php_info.php"
-	HeadUrls[2]="http://r.elmuerte.com"
-	HeadUrls[3]="http://downloads.unrealadmin.org/UT2004/Patches/Windows/ut2004-winpatch3323.exe"
-
-	PostData[0]=(url="http://el-muerte.student.utwente.nl/test/__php_info.php?data=on+the+url&will=move%20to%20body")
-	PostData[1]=(url="http://el-muerte.student.utwente.nl/test/__php_info.php",data=((Key="data",Value="in the body"),(Key="MoreData",Value="alsdjh laskjh asdkjh asldk alskjfd"),(Key="Last",Value="-- the end -- elmuerte")))
-	PostData[2]=(url="http://r.elmuerte.com/test/__php_info.php?data=will+be+lost+in+redir")
-
-	AuthUrls[0]=(url="http://test:test@el-muerte.student.utwente.nl/test/htpass/basic/")
-	AuthUrls[1]=(url="http://el-muerte.student.utwente.nl/test/htpass/basic/",username="test",password="test")
-	AuthUrls[2]=(url="http://el-muerte.student.utwente.nl/test/htpass/digest/",username="test",password="test")
-	AuthUrls[3]=(url="http://el-muerte.student.utwente.nl/test/htpass/digest2/",username="test",password="test")
-
-	FastUrls[0]="http://www.google.com" // set's cookie, and mostliky redirect
-	FastUrls[1]="http://el-muerte.student.utwente.nl/test/__php_info.php"
-	FastUrls[2]="http://r.elmuerte.com" // redirect
-	FastUrls[3]="http://el-muerte.student.utwente.nl/test/__php_info.php?some=var&and=another+item&last=one%20the%20end"
-
-	Tests[0]=HT_GET
-	Tests[1]=HT_HEAD
-	Tests[2]=HT_POST
-	Tests[3]=HT_AUTH
-	Tests[4]=HT_FASTGET
-	Tests[5]=HT_TRACE
+	Tests=(HT_GET,HT_HEAD,HT_POST,HT_AUTH,HT_FASTGET,HT_TRACE,HT_PROXY)
 }
