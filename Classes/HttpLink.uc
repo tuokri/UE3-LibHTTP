@@ -13,7 +13,7 @@
 	Released under the Lesser Open Unreal Mod License							<br />
 	http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense				<br />
 
-	<!-- $Id: HttpLink.uc,v 1.3 2004/09/19 11:17:42 elmuerte Exp $ -->
+	<!-- $Id: HttpLink.uc,v 1.4 2004/09/21 10:44:31 elmuerte Exp $ -->
 *******************************************************************************/
 
 class HttpLink extends TcpLink;
@@ -97,12 +97,12 @@ protected function FastTransfer()
 	{
 		if (MaxIt <= 0)
 		{
-			log("Reached maximum iteration count", name);
+			HttpSock.Logf("Reached maximum iteration count", class'HttpUtil'.default.LOGINFO, HttpSock.iMaxIterationsPerTick);
 			break;
 		}
 		if (CurCount > HttpSock.iMaxBytesPerTick)
 		{
-			Log("Received max bytes per tick"@CurCount, name);
+			HttpSock.Logf("Reached maximum bytes per tick", class'HttpUtil'.default.LOGINFO, CurCount, HttpSock.iMaxBytesPerTick);
 			break;
 		}
 		i = ReadText(data);

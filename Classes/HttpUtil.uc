@@ -11,7 +11,7 @@
 	Released under the Lesser Open Unreal Mod License							<br />
 	http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense				<br />
 
-	<!-- $Id: HttpUtil.uc,v 1.9 2004/03/17 00:17:09 elmuerte Exp $ -->
+	<!-- $Id: HttpUtil.uc,v 1.10 2004/09/21 10:44:31 elmuerte Exp $ -->
 *******************************************************************************/
 
 class HttpUtil extends Object;
@@ -22,6 +22,7 @@ var const int LOGWARN;
 var const int LOGINFO;
 var const int LOGDATA;
 
+/** month names to use for date string generation */
 var array<string> MonthNames;
 
 /**
@@ -274,9 +275,9 @@ static final function int TZtoOffset(string TZ)
 /**	Trim leading and trailing spaces */
 static final function string Trim(coerce string S)
 {
-    while (Left(S, 1) == " ") S = Right(S, Len(S) - 1);
+	while (Left(S, 1) == " ") S = Right(S, Len(S) - 1);
 		while (Right(S, 1) == " ") S = Left(S, Len(S) - 1);
-    return S;
+	return S;
 }
 
 /** Write a log entry */
@@ -335,47 +336,108 @@ static final function string HTTPResponseCode(int code)
 	switch (code)
 	{
 		case 100: return "continue";
-        case 101: return "Switching Protocols";
-        case 200: return "OK";
-        case 201: return "Created";
-        case 202: return "Accepted";
-        case 203: return "Non-Authoritative Information";
-        case 204: return "No Content";
-        case 205: return "Reset Content";
-        case 206: return "Partial Content";
-        case 300: return "Multiple Choices";
-        case 301: return "Moved Permanently";
-        case 302: return "Found";
-        case 303: return "See Other";
-        case 304: return "Not Modified";
-        case 305: return "Use Proxy";
-        case 307: return "Temporary Redirect";
-        case 400: return "Bad Request";
-        case 401: return "Unauthorized";
-        case 402: return "Payment Required";
-        case 403: return "Forbidden";
-        case 404: return "Not Found";
-        case 405: return "Method Not Allowed";
-        case 406: return "Not Acceptable";
-        case 407: return "Proxy Authentication Required";
-        case 408: return "Request Time-out";
-        case 409: return "Conflict";
-        case 410: return "Gone";
-        case 411: return "Length Required";
-        case 412: return "Precondition Failed";
-        case 413: return "Request Entity Too Large";
-        case 414: return "Request-URI Too Large";
-        case 415: return "Unsupported Media Type";
-        case 416: return "Requested range not satisfiable";
-        case 417: return "Expectation Failed";
-        case 500: return "Internal Server Error";
-        case 501: return "Not Implemented";
-        case 502: return "Bad Gateway";
-        case 503: return "Service Unavailable";
-        case 504: return "Gateway Time-out";
+		case 101: return "Switching Protocols";
+		case 200: return "OK";
+		case 201: return "Created";
+		case 202: return "Accepted";
+		case 203: return "Non-Authoritative Information";
+		case 204: return "No Content";
+		case 205: return "Reset Content";
+		case 206: return "Partial Content";
+		case 300: return "Multiple Choices";
+		case 301: return "Moved Permanently";
+		case 302: return "Found";
+		case 303: return "See Other";
+		case 304: return "Not Modified";
+		case 305: return "Use Proxy";
+		case 307: return "Temporary Redirect";
+		case 400: return "Bad Request";
+		case 401: return "Unauthorized";
+		case 402: return "Payment Required";
+		case 403: return "Forbidden";
+		case 404: return "Not Found";
+		case 405: return "Method Not Allowed";
+		case 406: return "Not Acceptable";
+		case 407: return "Proxy Authentication Required";
+		case 408: return "Request Time-out";
+		case 409: return "Conflict";
+		case 410: return "Gone";
+		case 411: return "Length Required";
+		case 412: return "Precondition Failed";
+		case 413: return "Request Entity Too Large";
+		case 414: return "Request-URI Too Large";
+		case 415: return "Unsupported Media Type";
+		case 416: return "Requested range not satisfiable";
+		case 417: return "Expectation Failed";
+		case 500: return "Internal Server Error";
+		case 501: return "Not Implemented";
+		case 502: return "Bad Gateway";
+		case 503: return "Service Unavailable";
+		case 504: return "Gateway Time-out";
 	}
 	return "";
 }
+
+/**
+	Split a string with quotes, quotes may appear anywhere in the string, escape
+	the quote char with a \ to use a literal. <br />
+	Qoutes are removed from the result, and escaped quotes are used as normal
+	quotes.
+*/
+static function int AdvSplit(string input, string delim, out array<string> elm, optional string quoteChar)
+{
+	local int di, qi;
+	local int delimlen, quotelen;
+	local string tmp;
+
+	// if quotechar is empty use the faster split method
+	if (quoteChar == "") return Split(input, delim, elm);
+
+	delimlen = Len(delim);
+	quotelen = Len(quoteChar);
+	ReplaceChar(input, "\\"$quoteChar, chr(1)); // replace escaped quotes
+	while (Len(input) > 0)
+	{
+		di = InStr(input, delim);
+		qi = InStr(input, quoteChar);
+
+		if (di == -1 && qi == -1) // neither found
+		{
+			ReplaceChar(input, chr(1), quoteChar);
+			elm[elm.length] = input;
+			input = "";
+		}
+		else if ((di < qi) && (di != -1) || (qi == -1)) // delim before a quotechar
+		{
+			tmp = Left(input, di);
+			ReplaceChar(tmp, chr(1), quoteChar);
+			elm[elm.length] = tmp;
+			input = Mid(input, di+delimlen);
+		}
+		else {
+			tmp = "";
+			// everything before the quote
+			if (qi > 0)	tmp = Left(input, qi);
+			input = mid(input, qi+quotelen);
+			// up to the next quote
+			qi = InStr(input, quoteChar);
+			if (qi == -1) qi = Len(input);
+			tmp = tmp$Left(input, qi);
+			input = mid(input, qi+quotelen);
+			// everything after the quote till delim
+			di = InStr(input, delim);
+			if (di > -1)
+			{
+				tmp = tmp$Left(input, di);
+				input = mid(input, di+delimlen);
+			}
+			ReplaceChar(tmp, chr(1), quoteChar);
+			elm[elm.length] = tmp;
+		}
+	}
+	return elm.length;
+}
+
 
 defaultproperties
 {

@@ -36,7 +36,7 @@
 	Released under the Lesser Open Unreal Mod License							<br />
 	http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense				<br />
 
-	<!-- $Id: HttpSock.uc,v 1.24 2004/09/20 06:10:08 elmuerte Exp $ -->
+	<!-- $Id: HttpSock.uc,v 1.25 2004/09/21 10:44:31 elmuerte Exp $ -->
 *******************************************************************************/
 /*
 	TODO:
@@ -82,11 +82,27 @@ var(URL) config string sHostname;
 var(URL) config int iPort;
 /** the local port, leave zero to use a random port (adviced) */
 var(URL) config int iLocalPort;
-/** the username and password to use when authentication is required, can be
-	passed in the url */
-var(URL) config string sAuthUsername, sAuthPassword;
 /** the default value for the Accept header, we only support "text / *" */
 var(URL) config string DefaultAccept;
+
+/**
+	Possible authentication methods, Basic used Base64 encoding to encode the
+	username and password. Digest is more secure.
+*/
+enum EAuthMethod
+{
+	AM_Unknown,
+	AM_Basic,
+	AM_Digest,
+};
+/** The username and password to use when authentication is required, can be
+	passed in the url */
+var(Authentication) config string sAuthUsername, sAuthPassword;
+/** Authentication method to use when <code>sUsername</code> is set. This will
+	automatically be set when a <code>WWW-Authenticate</code> header is received */
+var(Authentication) EAuthMethod AuthMethod;
+/** authentication information */
+var(Authentication) array<GameInfo.KeyValuePair> AuthInfo;
 
 /**
 	log verbosity, you probably want to leave this 0. check the [[HttpUtil]]
@@ -181,6 +197,10 @@ struct RequestHistoryEntry
 /** history with requests for a single request, will contain more then one entry
 	when redirections are followed */
 var array<RequestHistoryEntry> RequestHistory;
+
+/** duration of the last request */
+var float RequestDuration;
+var protected float StartRequestTime;
 
 /** the link class to use */
 var protected class<HttpLink> HttpLinkClass;
@@ -301,6 +321,13 @@ delegate bool OnFollowRedirect(string NewLocation)
 {
 	return true;
 }
+
+/**
+	Will be called when authorization is required for the current location. <br />
+	This will be called directly after receiving the WWW-Authenticate header. So
+	it's best not to stall this call. It's just a notification.
+*/
+delegate OnRequireAuthorization(EAuthMethod method, array<GameInfo.KeyValuePair> info);
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -514,17 +541,9 @@ function string getHTTPversion()
 }
 
 /** return if the authentication method is supported */
-//TODO: test this
-//TODO: add to response parsing
-function bool IsAuthMethodSupported(optional string HeaderLine)
+function bool IsAuthMethodSupported(EAuthMethod method)
 {
-	local string tmp;
-	if (HeaderLine == "") HeaderLine = GetReturnHeader("WWW-Authenticate", "");
-	if (InStr(HeaderLine, ":") > -1) HeaderLine = Mid(HeaderLine, InStr(HeaderLine, ":")+1);
-	Divide(HeaderLine, ";", HeaderLine, tmp);
-	HeaderLine = Trim(HeaderLine);
-	if (HeaderLine == "") return true;
-	if (HeaderLine ~= "basic") return true;
+	if (method == AM_Basic) return true;
 	return false;
 }
 
@@ -543,6 +562,7 @@ function bool IsAuthMethodSupported(optional string HeaderLine)
 */
 protected function bool HttpRequest(string location, string Method)
 {
+	local string tmp;
 	if (curState != HTTPState_Closed)
 	{
 		Logf("HttpSock not closed", class'HttpUtil'.default.LOGERR, GetEnum(enum'HTTPState', curState));
@@ -584,7 +604,11 @@ protected function bool HttpRequest(string location, string Method)
 	AddHeader("User-Agent", UserAgent());
 	AddHeader("Connection", "close");
 	AddHeader("Accept", DefaultAccept);
-	if (sAuthUsername != "") AddHeader("Authorization", genBasicAuthorization(sAuthUsername, sAuthPassword));
+	if (IsAuthMethodSupported(AuthMethod))
+	{
+		tmp = genAuthorization(AuthMethod, sAuthUsername, sAuthPassword, AuthInfo);
+		if (tmp != "") AddHeader("Authorization", tmp);
+	}
 	if ((Method ~= "POST") && (InStr(RequestLocation, "?") > -1 ))
 	{
 		//TODO: combine  URL options and existing post data
@@ -599,7 +623,7 @@ protected function bool HttpRequest(string location, string Method)
 }
 
 /** manage logging */
-protected function Logf(coerce string message, optional int level, optional coerce string Param1, optional coerce string Param2)
+function Logf(coerce string message, optional int level, optional coerce string Param1, optional coerce string Param2)
 {
 	if (level == class'HttpUtil'.default.LOGERR) OnError(Message, Param1, Param2);
 	if (level <= iVerbose) class'HttpUtil'.static.Logf(Name, Message, Level, Param1, Param2);
@@ -819,6 +843,8 @@ function Opened()
 {
 	local int i, totalDataSize;
 	Logf("Connection established", class'HttpUtil'.default.LOGINFO);
+	StartRequestTime = Level.TimeSeconds;
+	RequestDuration = -1;
 	curState = HTTPState_SendingRequest;
 	inBuffer = ""; // clear buffer
 	outBuffer = ""; // clear buffer
@@ -867,7 +893,11 @@ function Closed()
 	{
 		Logf("Connection closed", class'HttpUtil'.default.LOGINFO);
 		curState = HTTPState_Closed;
-		if (!bTimeout) OnComplete();
+		if (!bTimeout)
+		{
+			RequestDuration = Level.TimeSeconds-StartRequestTime;
+			OnComplete();
+		}
 	}
 	else {
 		CurRedir++;
@@ -998,6 +1028,10 @@ protected function ProcInput(string inline)
 			bIsChunked = InStr(Caps(inline), "CHUNKED") > -1;
 			Logf("Body is chunked", class'HttpUtil'.default.LOGINFO, bIsChunked);
 		}
+		if (Left(inline, retc) ~= "www-authenticate")
+		{
+			ProccessWWWAuthenticate(Mid(inline, retc+1));
+		}
 	}
 	else {
 		if (bIsChunked && (chunkedCounter <= 0))
@@ -1032,6 +1066,55 @@ protected function SendData(string data, optional bool bFlush)
 		HttpLink.SendText(outBuffer);
 		outBuffer = "";
 	}
+}
+
+/** string to AuthMethod */
+function EAuthMethod StrToAuthMethod(coerce string method)
+{
+	if (method ~= "basic") return AM_Basic;
+	if (method ~= "digest") return AM_Digest;
+	return AM_Unknown;
+}
+
+/**
+	Process the header data send by a WWW-Authenticate header;
+*/
+protected function ProccessWWWAuthenticate(string HeaderData)
+{
+	local array<string> elements;
+	local string k,v;
+	local int i;
+
+	Divide(class'HttpUtil'.static.Trim(HeaderData), " ", k, HeaderData);
+	AuthMethod = StrToAuthMethod(k);
+	class'HttpUtil'.static.AdvSplit(class'HttpUtil'.static.Trim(HeaderData), ", ", elements, "\"");
+	AuthInfo.Length = 0;
+	if (elements.Length == 0)
+	{
+		Logf("Invalid WWW-Authenticate data", class'HttpUtil'.default.LOGERR, HeaderData);
+		return;
+	}
+	else {
+
+		for (i = 0; i < elements.length; i++)
+		{
+			log(elements[i]);
+			Divide(elements[i], "=", k, v);
+			AuthInfo.length = AuthInfo.length+1;
+			AuthInfo[AuthInfo.length-1].Key = k;
+			AuthInfo[AuthInfo.length-1].Value = v;
+		}
+	}
+	if (!IsAuthMethodSupported(AuthMethod))
+		Logf("Unsupported WWW-Authenticate method required", class'HttpUtil'.default.LOGWARN, GetEnum(enum'EAuthMethod', AuthMethod));
+	else OnRequireAuthorization(AuthMethod, AuthInfo);
+}
+
+/** generate the authentication data */
+protected function string genAuthorization(EAuthMethod method, string Username, string Password, array<GameInfo.KeyValuePair> Info)
+{
+	if (method == AM_Basic) return genBasicAuthorization(Username, Password);
+	return "";
 }
 
 /**
@@ -1072,4 +1155,5 @@ defaultproperties
 	TransferMode=TM_Normal
 	iMaxIterationsPerTick=32
 	iMaxBytesPerTick=4096
+	AuthMethod=AM_Basic
 }
