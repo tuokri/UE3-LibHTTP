@@ -14,10 +14,10 @@
 	Released under the Lesser Open Unreal Mod License							<br />
 	http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense				<br />
 
-	<!-- $Id: HttpUtil.uc,v 1.14 2004/09/25 15:37:41 elmuerte Exp $ -->
+	<!-- $Id: HttpUtil.uc,v 1.15 2004/09/30 15:58:55 elmuerte Exp $ -->
 *******************************************************************************/
 
-class HttpUtil extends Object;
+class HttpUtil extends Core.Object;
 
 /* log levels */
 var const int LOGERR;
@@ -26,7 +26,11 @@ var const int LOGINFO;
 var const int LOGDATA;
 
 /** month names to use for date string generation */
-var array<string> MonthNames;
+var const string MonthNames[13];
+/** names of the days, 0 = sunday */
+var const string DayNamesLong[7], DayNamesShort[7];
+/** days offsets for each month*/
+var const int MonthOffset[13], MonthOffsetLeap[13];
 
 /** MD5 context */
 struct MD5_CTX
@@ -44,7 +48,7 @@ struct MD5_CTX
 	secure, so try to avoid it.
 	";", "/", "?", ":", "@", "&", "=", "+", ",", "$" and " "
 */
-static function string RawUrlEncode(string instring)
+static final function string RawUrlEncode(string instring)
 {
 	ReplaceChar(instring, ";", "%3B");
 	ReplaceChar(instring, "/", "%2F");
@@ -63,7 +67,7 @@ static function string RawUrlEncode(string instring)
 /**
 	replace part of a string
 */
-static function ReplaceChar(out string instring, string from, string to)
+static final function ReplaceChar(out string instring, string from, string to)
 {
 	local int i;
 	local string src;
@@ -82,7 +86,7 @@ static function ReplaceChar(out string instring, string from, string to)
 /**
 	base64 encode an input array
 */
-static function array<string> Base64Encode(array<string> indata, out array<string> B64Lookup)
+static final function array<string> Base64Encode(array<string> indata, out array<string> B64Lookup)
 {
 	local array<string> result;
 	local int i, dl, n;
@@ -148,7 +152,7 @@ static function array<string> Base64Encode(array<string> indata, out array<strin
 /**
 	Decode a base64 encoded string
 */
-static function array<string> Base64Decode(array<string> indata)
+static final function array<string> Base64Decode(array<string> indata)
 {
 	local array<string> result;
 	local int i, dl, n, padded;
@@ -201,7 +205,7 @@ static function array<string> Base64Decode(array<string> indata)
 /**
 	Generate the base 64 encode lookup table
 */
-static function Base64EncodeLookupTable(out array<string> LookupTable)
+static final function Base64EncodeLookupTable(out array<string> LookupTable)
 {
 	local int i;
 	for (i = 0; i < 26; i++)
@@ -221,10 +225,17 @@ static function Base64EncodeLookupTable(out array<string> LookupTable)
 }
 
 /**
-	Create a UNIX timestamp
+	Create a UNIX timestamp. <br />
+	Warning: Assumes info is passed in GMT. So make sure you correct the timezone
+	if you are going to send a timestamp generated with this function to an other
+	server.
 */
 static final function int timestamp(int year, int mon, int day, int hour, int min, int sec)
 {
+	/*
+		Origin of the algorithm below:
+			Linux Kernel <time.h>
+	*/
 	mon -= 2;
 	if (mon <= 0) {	/* 1..12 -> 11,12,1..10 */
 		mon += 12;	/* Puts Feb last since it has leap day */
@@ -233,7 +244,7 @@ static final function int timestamp(int year, int mon, int day, int hour, int mi
 	return (((
 	    (year/4 - year/100 + year/400 + 367*mon/12 + day) +
 	      year*365 - 719499
-	    )*24 + (hour-1) /* now have hours */
+	    )*24 + hour /* now have hours */
 	   )*60 + min  /* now have minutes */
 	  )*60 + sec; /* finally seconds */
 }
@@ -260,7 +271,7 @@ static final function int stringToTimestamp(string datestring, optional int TZof
 		if (split(data[1], "-", datePart) != 3) return 0;
 		if (split(data[2], ":", timePart) != 3) return 0;
 		// find month offset
-		for (i = 1; i < default.MonthNames.length; i++)
+		for (i = 1; i < ArrayCount(default.MonthNames); i++)
 		{
 			if (default.MonthNames[i] ~= datePart[1])
 			{
@@ -269,9 +280,122 @@ static final function int stringToTimestamp(string datestring, optional int TZof
 			}
 		}
 		if (Len(datePart[2]) == 2) datePart[2] = "20"$datePart[2];
-		return timestamp(int(datePart[2]), int(datePart[1]), int(datePart[0]), int(timePart[0])+TZoffset+TZtoOffset(data[3]), int(timePart[1]), int(timePart[2]));
+		return timestamp(int(datePart[2]), int(datePart[1]), int(datePart[0]),
+			int(timePart[0])+TZoffset+TZtoOffset(data[3]), int(timePart[1]), int(timePart[2]));
 	}
 	return 0;
+}
+
+/** returns if year is a leap year */
+static final function bool isLeapYear(int year)
+{
+	return (year) % 4 == 0 && ((year) % 100 != 0 || (year) % 400 == 0);
+}
+
+/** returns the number of days in a year */
+static final function int daysInYear(int year)
+{
+	const DAYS_PER_YEAR = 365;
+	const DAYS_PER_LEAP_YEAR = 366;
+	if (isLeapYear(year)) return DAYS_PER_LEAP_YEAR;
+	else return DAYS_PER_YEAR;
+}
+
+static final function int leapsThruEndOf(int y)
+{
+	return ((y / 4) - (y / 100) + (y / 400));
+}
+
+/** the float % operator is broken */
+static final operator(18) int % ( int x, int y )
+{
+	return x-(x/y*y);
+}
+
+/**
+	convert a timestamp into a string. <br />
+	Format can be one of the following strings: <br />
+	"822", "1123" : RFC 822, updated by RFC 1123 (default), timezone is the TZ CODE <br />
+	"850", "1036" : RFC 850, obsoleted by RFC 1036, timezone is the TZ CODE  <br />
+	"2822" : RFC 2822, timezone is a +0000 like string <br />
+	"asctime": ANSI C's asctime() format, timezone is an integer that will increment the hour <br />
+	//	2004-02-12T15:19:21+00:00
+*/
+static final function string timestampToString(int timestamp, optional string Timezone, optional string format)
+{
+	/*
+		Origin of the algorithm below:
+			GNU C Library <offtime.c>
+	*/
+	const SECS_PER_DAY = 86400;
+	const SECS_PER_HOUR = 3600;
+	local int days, rem, yg;
+	local int year, month, day, wday, hour, minute, second;
+
+	days = timestamp / SECS_PER_DAY;
+	rem = timestamp % SECS_PER_DAY;
+	while (rem < 0)
+	{
+		rem += SECS_PER_DAY;
+		--days;
+	}
+	while (rem >= SECS_PER_DAY)
+	{
+		rem -= SECS_PER_DAY;
+		++days;
+	}
+	hour = rem / SECS_PER_HOUR;
+	rem = rem % SECS_PER_HOUR;
+	minute = rem / 60;
+  	second = rem % 60;
+  	/* January 1, 1970 was a Thursday.  */
+	wday = (4 + days) % 7;
+	if (wday < 0) wday += 7;
+ 	year = 1970;
+
+ 	while (days < 0 || days >= daysInYear(year))
+	{
+		/* Guess a corrected year, assuming 365 days per year.  */
+		yg = year + days / DAYS_PER_YEAR - int(days % DAYS_PER_YEAR < 0);
+		/* Adjust DAYS and Y to match the guessed year.  */
+		days -= ((yg - year) * DAYS_PER_YEAR + leapsThruEndOf(yg - 1) - leapsThruEndOf(year - 1));
+		year = yg;
+	}
+	if (isLeapYear(year))
+	{
+		for (yg = 11; days < default.MonthOffsetLeap[yg]; --yg) continue;
+		month = yg;
+		days -= default.MonthOffsetLeap[yg];
+	}
+	else {
+		for (yg = 11; days < default.MonthOffset[yg]; --yg) continue;
+		month = yg;
+		days -= default.MonthOffset[yg];
+	}
+	day = days + 1;
+
+	switch (format)
+	{
+		case "850":
+		case "1036":
+			if (Timezone == "") Timezone = "GMT";
+			format = default.DayNamesLong[wday]$", "$Right("0"$day, 2)$"-"$default.MonthNames[month+1]$"-"$Year@Right("0"$hour, 2)$":"$Right("0"$minute, 2)$":"$Right("0"$second, 2)@Timezone;
+			return format;
+		case "asctime":
+			hour += int(Timezone);
+			format = default.DayNamesShort[wday]@default.MonthNames[month+1]@Right(" "$day, 2)@Right("0"$hour, 2)$":"$Right("0"$minute, 2)$":"$Right("0"$second, 2)@year;
+			return format;
+		case "2822":
+			if (Timezone == "") Timezone = "+0000";
+			format = default.DayNamesShort[wday]$", "$Right("0"$day, 2)@default.MonthNames[month+1]@Year@Right("0"$hour, 2)$":"$Right("0"$minute, 2)$":"$Right("0"$second, 2)@Timezone;
+			return format;
+		// case: 822
+		// case: 1123
+		default:
+			if (Timezone == "") Timezone = "GMT";
+			format = default.DayNamesShort[wday]$", "$Right("0"$day, 2)@default.MonthNames[month+1]@Year@Right("0"$hour, 2)$":"$Right("0"$minute, 2)$":"$Right("0"$second, 2)@Timezone;
+			return format;
+	}
 }
 
 /**
@@ -460,7 +584,7 @@ static function int AdvSplit(string input, string delim, out array<string> elm, 
 */
 
 /** return the MD5 of the input string */
-static function string MD5String (string str)
+static final function string MD5String (string str)
 {
 	local MD5_CTX context;
 	local array<byte> digest;
@@ -482,7 +606,7 @@ static function string MD5String (string str)
 	Return the MD5 of the input string array.
 	Concat is added after each line.
 */
-static function string MD5StringArray (array<string> stra, optional string Concat)
+static final function string MD5StringArray (array<string> stra, optional string Concat)
 {
 	local MD5_CTX context;
 	local array<byte> digest;
@@ -801,4 +925,48 @@ defaultproperties
 	MonthNames[10]="Oct"
 	MonthNames[11]="Nov"
 	MonthNames[12]="Dec"
+
+	DayNamesShort[0]="Sun"
+	DayNamesShort[1]="Mon"
+	DayNamesShort[2]="Tue"
+	DayNamesShort[3]="Wed"
+	DayNamesShort[4]="Thu"
+	DayNamesShort[5]="Fri"
+	DayNamesShort[6]="Sat"
+
+	DayNamesLong[0]="Sunday"
+	DayNamesLong[1]="Monday"
+	DayNamesLong[2]="Tuesday"
+	DayNamesLong[3]="Wednesday"
+	DayNamesLong[4]="Thursday"
+	DayNamesLong[5]="Friday"
+	DayNamesLong[6]="Saturday"
+
+	MonthOffset[0]=0
+	MonthOffset[1]=31
+	MonthOffset[2]=59
+	MonthOffset[3]=90
+	MonthOffset[4]=120
+	MonthOffset[5]=151
+	MonthOffset[6]=181
+	MonthOffset[7]=212
+	MonthOffset[8]=243
+	MonthOffset[9]=273
+	MonthOffset[10]=304
+	MonthOffset[11]=334
+	MonthOffset[12]=365
+
+	MonthOffsetLeap[0]=0
+	MonthOffsetLeap[1]=31
+	MonthOffsetLeap[2]=60
+	MonthOffsetLeap[3]=91
+	MonthOffsetLeap[4]=121
+	MonthOffsetLeap[5]=152
+	MonthOffsetLeap[6]=182
+	MonthOffsetLeap[7]=213
+	MonthOffsetLeap[8]=244
+	MonthOffsetLeap[9]=274
+	MonthOffsetLeap[10]=305
+	MonthOffsetLeap[11]=335
+	MonthOffsetLeap[12]=366
 }

@@ -40,7 +40,12 @@
 		(and the cookies hasn't been set)										<br />
 																				<br />
 	New in version 350:															<br />
-	* All delegates contains a HttpSock Sender argument
+	* All delegates contains a HttpSock Sender argument							<br />
+	* New function string
+		randString(optional int length, optional coerce string prefix)			<br />
+	* MultiPart divider string is now more unique								<br />
+	* Content-Length added multipart items										<br />
+	* Empty multipart items are never added										<br />
 																				<br />
 	Dcoumentation and Information:
 		http://wiki.beyondunreal.com/wiki/LibHTTP								<br />
@@ -51,10 +56,10 @@
 	Released under the Lesser Open Unreal Mod License							<br />
 	http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense				<br />
 
-	<!-- $Id: HttpSock.uc,v 1.32 2004/09/26 08:04:35 elmuerte Exp $ -->
+	<!-- $Id: HttpSock.uc,v 1.33 2004/09/30 15:58:55 elmuerte Exp $ -->
 *******************************************************************************/
 
-class HttpSock extends Info config;
+class HttpSock extends Engine.Info config;
 
 /** LibHTTP version number */
 const VERSION = 350;
@@ -463,15 +468,18 @@ function bool postex(string location, optional array<string> PostData)
 */
 function bool setFormDataEx(string field, array<string> data, optional string contentType, optional string contentEncoding)
 {
-	local int n, i;
-	if (MultiPartBoundary == "") MultiPartBoundary = class'HttpUtil'.static.DecToHex(rand(MaxInt), 3);
-	AddHeader("Content-Type", "multipart/form-data; boundary="$MultiPartBoundary);
+	local int n, i, size;
+	size = DataSize(data);
+	if (size == 0) return false;
+	if (MultiPartBoundary == "") MultiPartBoundary = randString(, "--==_NextPart.");
+	AddHeader("Content-Type", "multipart/form-data; boundary=\""$MultiPartBoundary$"\"");
 	n = RequestData.length;
 	if (n > 0) n--; // remove previous end
 	RequestData[n++] = "--"$MultiPartBoundary;
 	RequestData[n++] = "Content-Disposition: form-data; name="$field;
-	if (contentType != "") RequestData[n++] = "Content-Type: "@contentType;
-	if (contentEncoding != "") RequestData[n++] = "Content-Encoding: "@contentEncoding;
+	if (contentType != "") RequestData[n++] = "Content-Type:"@contentType;
+	if (contentEncoding != "") RequestData[n++] = "Content-Encoding:"@contentEncoding;
+	RequestData[n++] = "Content-Length:"@size;
 	RequestData[n++] = "";
 	for (i = 0; i < data.length; i++)
 	{
@@ -484,7 +492,7 @@ function bool setFormDataEx(string field, array<string> data, optional string co
 /**
 	Simple form of <code>setFormDataEx</code> when the data is only one line
 */
-function bool setFormData(string field, string data, optional string contentType, optional string contentEncoding)
+function bool setFormData(string field, coerce string data, optional string contentType, optional string contentEncoding)
 {
 	local array<string> adata;
 	adata[0] = data;
@@ -523,7 +531,7 @@ function bool httrace(string location)
 	Add a header, case insensitive.	Set bNoReplace to false to not overwrite the old header.
 	Returns true when the header has been set.
 */
-function bool AddHeader(string hname, string value, optional bool bNoReplace)
+function bool AddHeader(string hname, coerce string value, optional bool bNoReplace)
 {
 	local int i;
 	for (i = RequestHeaders.length-1; i >= 0; i--)
@@ -560,7 +568,7 @@ function bool RemoveHeader(string hname)
 /**
 	Returns the value of the requested header, or default if not found
 */
-function string GetRequestHeader(string hname, optional string def)
+function string GetRequestHeader(string hname, optional coerce string def)
 {
 	local int i, j;
 	for (i = 0; i < RequestHeaders.length; i++)
@@ -577,7 +585,7 @@ function string GetRequestHeader(string hname, optional string def)
 /**
 	Returns the value of the returned header, or default if not found
 */
-function string GetReturnHeader(string hname, optional string def)
+function string GetReturnHeader(string hname, optional coerce string def)
 {
 	local int i, j;
 	for (i = 0; i < RequestHeaders.length; i++)
@@ -643,6 +651,56 @@ function EAuthMethod StrToAuthMethod(coerce string method)
 	if (method ~= "basic") return AM_Basic;
 	if (method ~= "digest") return AM_Digest;
 	return AM_Unknown;
+}
+
+/**
+	Returns the current timestamp
+*/
+function int now()
+{
+	return class'HttpUtil'.static.timestamp(Level.Year, Level.Month, Level.Day, Level.Hour, Level.Minute, Level.Second);
+}
+
+/**
+	Generates a random string. The size defaults to 16. Prefix isn't included
+	with the size;
+*/
+function string randString(optional int size, optional coerce string prefix)
+{
+	local string str;
+	local int i;
+	if (size == 0) size = 16;
+	i = size;
+	frand(); //seed
+	while (i > 0)
+	{
+		str = str$class'HttpUtil'.static.DecToHex(MaxInt*frand(), 4);
+		i -= len(str);
+	}
+	return prefix$Left(str, size);
+}
+
+/**
+	Returns the value of a <code>KeyValuePair</code>
+*/
+static function string GetValue(string key, array<GameInfo.KeyValuePair> Info, optional coerce string def)
+{
+	local int i;
+	for (i = 0; i < info.length; i++)
+	{
+		if (info[i].key ~= key) return info[i].value;
+	}
+	return def;
+}
+
+/** Returns the useragent string we use */
+function string UserAgent()
+{
+	local string res;
+	res = "LibHTTP/"$VERSION@"(UnrealEngine2; build "@Level.EngineVersion$"; http://wiki.beyondunreal.com/wiki/LibHTTP ";
+	if (EXTENTION != "") res = res$";"@EXTENTION;
+	res = res$")";
+	return res;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -730,6 +788,16 @@ protected function bool HttpRequest(string location, string Method)
 	return OpenConnection();
 }
 
+/** Returns true when the request method is supported */
+protected function bool IsSupportedMethod()
+{
+	if (RequestMethod ~= HTTP_GET) return true;
+	else if (RequestMethod ~= HTTP_HEAD) return true;
+	else if (RequestMethod ~= HTTP_POST) return true;
+	else if (RequestMethod ~= HTTP_TRACE) return true;
+	return false;
+}
+
 /** manage logging */
 function Logf(coerce string message, optional int level, optional coerce string Param1, optional coerce string Param2)
 {
@@ -737,21 +805,11 @@ function Logf(coerce string message, optional int level, optional coerce string 
 	if (level <= iVerbose) class'HttpUtil'.static.Logf(Name, Message, Level, Param1, Param2);
 }
 
-/** Returns the useragent string we use */
-protected function string UserAgent()
-{
-	local string res;
-	res = "LibHTTP/"$VERSION@"(UnrealEngine2; build "@Level.EngineVersion$"; http://wiki.beyondunreal.com/wiki/LibHTTP ";
-	if (EXTENTION != "") res = res$";"@EXTENTION;
-	res = res$")";
-	return res;
-}
-
 /**
 	Return the actual data size of a string array, it appends sizeof(CRLF) for
 	each line. This is used for sending the RequestData.
 */
-protected function int DataSize(out array<string> data)
+protected function int DataSize(array<string> data)
 {
 	local int i, res, crlflen;
 	res = 0;
@@ -761,16 +819,6 @@ protected function int DataSize(out array<string> data)
 		res += Len(data[i])+crlflen;
 	}
 	return res;
-}
-
-/** Returns true when the request method is supported */
-protected function bool IsSupportedMethod()
-{
-	if (RequestMethod ~= HTTP_GET) return true;
-	else if (RequestMethod ~= HTTP_HEAD) return true;
-	else if (RequestMethod ~= HTTP_POST) return true;
-	else if (RequestMethod ~= HTTP_TRACE) return true;
-	return false;
 }
 
 /** Parses the fully qualified URL */
@@ -1150,8 +1198,8 @@ protected function ProcInput(string inline)
 		if (Left(inline, retc) ~= "date")
 		{
 			// calculate timezone offset
-			i = class'HttpUtil'.static.stringToTimestamp(class'HttpUtil'.static.trim(Mid(inline, retc+1)));
-			Logf("Server date", class'HttpUtil'.default.LOGINFO, i);
+			i = class'HttpUtil'.static.stringToTimestamp(class'HttpUtil'.static.trim(Mid(inline, retc+1)), 0);
+			Logf("Server date", class'HttpUtil'.default.LOGINFO, i, class'HttpUtil'.static.timestampToString(i));
 			if (i != 0)
 			{
 				TZoffset = (now()-i)/3600;
@@ -1266,7 +1314,7 @@ protected function ProccessWWWAuthenticate(string HeaderData, bool bProxyAuth)
 	generate the authentication data, depending on the method it will be either
 	a Basic or Digest response
 */
-protected function string genAuthorization(EAuthMethod method, string Username, string Password, array<GameInfo.KeyValuePair> Info)
+function string genAuthorization(EAuthMethod method, string Username, string Password, array<GameInfo.KeyValuePair> Info)
 {
 	if (method == AM_Basic) return genBasicAuthorization(Username, Password);
 	else if (method == AM_Digest) return genDigestAuthorization(Username, Password, Info);
@@ -1284,19 +1332,6 @@ protected function string genBasicAuthorization(string Username, string Password
 	res = class'HttpUtil'.static.Base64Encode(res, authBasicLookup);
 	Logf("Base 64 encoding", class'HttpUtil'.default.LOGINFO, Username$":"$Password, res[0]);
 	return "Basic"@res[0];
-}
-
-/**
-	Returns the value of a <code>KeyValuePair</code>
-*/
-static function string GetValue(string key, array<GameInfo.KeyValuePair> Info, optional string def)
-{
-	local int i;
-	for (i = 0; i < info.length; i++)
-	{
-		if (info[i].key ~= key) return info[i].value;
-	}
-	return def;
 }
 
 /** generate the Digest authorization data string */
@@ -1318,7 +1353,7 @@ protected function string genDigestAuthorization(string Username, string Passwor
 
 	if (qop != "")
 	{
-		cnonce = class'HttpUtil'.static.DecToHex(rand(MaxInt), 8);
+		cnonce = randString();
 		result = result$"cnonce=\""$cnonce$"\", ";
 		result = result$"nc=00000001, "; // always 1st request
 		result = result$"qop=\""$qop$"\", ";
@@ -1353,14 +1388,6 @@ protected function string genDigestAuthorization(string Username, string Passwor
 		Logf("Unknown digest algorithm", class'HttpUtil'.default.LOGWARN, alg);
 	}
 	return result;
-}
-
-/**
-	Returns the current timestamp
-*/
-function int now()
-{
-	return class'HttpUtil'.static.timestamp(Level.Year, Level.Month, Level.Day, Level.Hour, Level.Minute, Level.Second);
 }
 
 defaultproperties

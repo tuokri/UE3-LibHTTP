@@ -14,10 +14,10 @@
 	Released under the Lesser Open Unreal Mod License							<br />
 	http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense				<br />
 
-	<!-- $Id: NewsFeed.uc,v 1.9 2004/03/18 07:38:59 elmuerte Exp $ -->
+	<!-- $Id: NewsFeed.uc,v 1.10 2004/09/30 15:58:55 elmuerte Exp $ -->
 *******************************************************************************/
 
-class NewsFeed extends Object PerObjectConfig;
+class NewsFeed extends Core.Object PerObjectConfig;
 
 /** name of this object */
 var(Config) config string rssHost;

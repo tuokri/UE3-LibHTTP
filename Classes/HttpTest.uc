@@ -5,9 +5,9 @@
 	Released under the Lesser Open Unreal Mod License							<br />
 	http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense				<br />
 
-	<!-- $Id: HttpTest.uc,v 1.6 2004/09/26 07:57:33 elmuerte Exp $ -->
+	<!-- $Id: HttpTest.uc,v 1.7 2004/09/30 15:58:55 elmuerte Exp $ -->
 *******************************************************************************/
-class HttpTest extends Info;
+class HttpTest extends Engine.Info;
 
 /** various tests */
 enum EHttpTests

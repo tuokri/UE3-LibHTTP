@@ -11,10 +11,10 @@
 	Released under the Lesser Open Unreal Mod License							<br />
 	http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense				<br />
 
-	<!-- $Id: HttpCookies.uc,v 1.9 2004/09/23 20:36:47 elmuerte Exp $ -->
+	<!-- $Id: HttpCookies.uc,v 1.10 2004/09/30 15:58:55 elmuerte Exp $ -->
 *******************************************************************************/
 
-class HttpCookies extends Object config parseconfig;
+class HttpCookies extends Core.Object config parseconfig;
 
 /** cookie entry */
 struct HTTPCookie
@@ -109,7 +109,7 @@ function string GetCookie(string cname, string domain, string path, optional str
 }
 
 /**
-	Create a cookie string
+	Create a cookie string. TimeStamp should be the real current timestamp (not GMT corrected)
 */
 function string GetCookieString(string Domain, string Path, int CurrentTimeStamp)
 {
@@ -169,6 +169,7 @@ function bool ParseCookieData(string data, string rDomain, string rPath, optiona
 				v = class'HttpUtil'.static.trim(v);
 				if (n ~= "expires")
 				{
+					// correct timestamp to our time
 					c.Expires = class'HttpUtil'.static.stringToTimestamp(v, TZoffset);
 					Logf("ParseCookieData - Got expires", class'HttpUtil'.default.LOGINFO, v, c.Expires);
 				}

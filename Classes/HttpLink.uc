@@ -13,10 +13,10 @@
 	Released under the Lesser Open Unreal Mod License							<br />
 	http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense				<br />
 
-	<!-- $Id: HttpLink.uc,v 1.4 2004/09/21 10:44:31 elmuerte Exp $ -->
+	<!-- $Id: HttpLink.uc,v 1.5 2004/09/30 15:58:55 elmuerte Exp $ -->
 *******************************************************************************/
 
-class HttpLink extends TcpLink;
+class HttpLink extends IpDrv.TcpLink;
 
 /** the owning HttpSock */
 var protected HttpSock HttpSock;
