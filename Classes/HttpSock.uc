@@ -1,10 +1,11 @@
 /**
 	HttpSock
-	Base of LibHTTP this implements the main network methods
+	Base of LibHTTP this implements the main network methods for connecting to a
+	webserver and retreiving data from it
 
 	Authors:	Michiel 'El Muerte' Hendriks <elmuerte@drunksnipers.com>
 
-	$Id: HttpSock.uc,v 1.1 2003/07/29 00:49:41 elmuerte Exp $
+	$Id: HttpSock.uc,v 1.2 2003/07/29 01:35:56 elmuerte Exp $
 */
 
 class HttpSock extends TcpLink config;
@@ -26,6 +27,8 @@ var config bool bFollowRedirect;
 var config string sAuthUsername, sAuthPassword;
 /** log verbosity */
 var config int iVerbose;
+/** Maximum redirections to follow */
+var config int iMaxRedir;
 
 /* local variables */
 
@@ -49,6 +52,11 @@ var private bool procHeader;
 
 /** @ingore */
 var IpAddr LocalLink;
+
+/** @ingore */
+var bool FollowingRedir, RedirTrap;
+/** @ingore */
+var int CurRedir;
 
 /* log levels */
 const LOGERR = 0;
@@ -139,6 +147,7 @@ function bool HttpRequest(string location, optional string Method, optional arra
 	}
 	// start resolve
 	curState = HTTPState_Resolving;
+	CurRedir = 0;
 	Resolve(sHostname);
 }
 
@@ -149,6 +158,11 @@ function bool HttpRequest(string location, optional string Method, optional arra
 function AddHeader(string hname, string value, optional bool bNoReplace)
 {
 	local int i;
+	if (hname ~= "Connection")
+	{
+		Logf("Can't change 'Connection' header", LOGINFO);
+		return;
+	}
 	for (i = 0; i < RequestHeaders.length; i++)
 	{
 		if (Left(RequestHeaders[i], InStr(RequestHeaders[i], ":")) ~= hname)
@@ -251,6 +265,7 @@ private function string UserAgent()
 private function bool IsSupportedMethod()
 {
 	if (RequestMethod ~= "GET") return true;
+	else if (RequestMethod ~= "HEAD") return true;
 	//else if (Method ~= "POST") return true;
 	Logf("Unsupported method", LOGERR, RequestMethod);
 	return false;
@@ -266,6 +281,7 @@ private function ParseRequestUrl(string location, string Method)
 	{
 		RequestLocation = Mid(location, i);
 		location = Left(location, i);
+		//TODO: if Method == POST move query
 	}
 	else RequestLocation = "/"; // get index
 	Logf("ParseRequestUrl", LOGINFO, "RequestLocation", RequestLocation);
@@ -342,20 +358,31 @@ event Opened()
 	ReturnHeaders.length = 0;
 	ReturnData.length = 0;
 	procHeader = true;
+	FollowingRedir = false;
+	RedirTrap = false;
 	Logf("Request send", LOGINFO);
 }
 
 event Closed()
 {
-	Logf("Connection closed", LOGINFO);
-	curState = HTTPState_Closed;
-	OnComplete();
+	FollowingRedir = RedirTrap;
+	if (!FollowingRedir)
+	{
+		Logf("Connection closed", LOGINFO);
+		curState = HTTPState_Closed;
+		OnComplete();
+	}
+	else {
+		CurRedir++;
+		if (iMaxRedir == CurRedir) Logf("MaxRedir reached", LOGWARN, iMaxRedir, CurRedir);
+		Resolve(sHostname);
+	}
 }
 
 event ReceivedLine( string Line )
 {
 	local array<string> tmp, tmp2;
-	local int i;
+	local int i, retc;
 
 	curState = HTTPState_ReceivingData;
 	line = buffer$line;
@@ -369,10 +396,31 @@ event ReceivedLine( string Line )
 			if (ReturnHeaders.length == 0) 
 			{
 				Split(tmp[i], " ", tmp2);
+				retc = int(tmp2[1]);
+				if (bFollowRedirect && ((retc == 301) || (retc == 302)) && (iMaxRedir > CurRedir))
+				{
+					Logf("Redirecting", LOGINFO, retc);
+					FollowingRedir = true;
+					RedirTrap = false;
+				}
 										// code       description    http/1.0
-				OnReturnCode(int(tmp2[1]), tmp2[2], tmp2[0]);
+				OnReturnCode(retc, tmp2[2], tmp2[0]);
 			}
 			ReturnHeaders[ReturnHeaders.length] = tmp[i];
+
+			// if following redirection find new location
+			if (FollowingRedir)
+			{
+				retc = InStr(tmp[i], ":");
+				if (Left(tmp[i], retc) ~= "location")
+				{
+					Logf("Redirect Location", LOGINFO, tmp[i]);
+					RequestLocation = Trim(Mid(tmp[i], retc+1));
+					if (Left(RequestLocation, 4) ~= "http") ParseRequestUrl(RequestLocation, RequestMethod);
+					AddHeader("Host", sHostname); // make sure the new host is set
+					RedirTrap = true;
+				}
+			}
 			if (tmp[i] == "") procHeader = false;
 		}
 		else {
@@ -382,10 +430,19 @@ event ReceivedLine( string Line )
   buffer = tmp[tmp.length-1];
 }
 
+// Trim leading and trailing spaces
+static final function string Trim(coerce string S)
+{
+    while (Left(S, 1) == " ") S = Right(S, Len(S) - 1);
+		while (Right(S, 1) == " ") S = Left(S, Len(S) - 1);
+    return S;
+}
+
 defaultproperties
 {
 	iVerbose=-1
 	iLocalPort=0
 	bFollowRedirect=true
 	curState=HTTPState_Closed
+	iMaxRedir=5
 }
