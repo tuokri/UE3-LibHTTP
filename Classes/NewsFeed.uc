@@ -2,12 +2,12 @@
 	NewsFeed
 	RSS\RDF Porcessing. Part of [[LibHTTP]].
 	Either RSS or RDF format is accepted. 
-	Note: the HTML special chars are NOT fixed, you have to do this yourself
-	Note: Don't pound the webserver with requests, chache your results
+	''Note:'' the HTML special chars are NOT fixed, you have to do this yourself
+	''Note:'' Don't pound the webserver with requests, cache your results
 
 	Authors:	Michiel 'El Muerte' Hendriks <elmuerte@drunksnipers.com>
 
-	$Id: NewsFeed.uc,v 1.1 2003/07/30 19:26:23 elmuerte Exp $
+	$Id: NewsFeed.uc,v 1.2 2003/07/30 19:37:39 elmuerte Exp $
 */
 
 class NewsFeed extends Object;
@@ -94,7 +94,6 @@ protected function string getTag(out array<string> Args)
 		}
 		else s = Left(s, Len(s)-1);
 	}
-	log(":::: Return tag"@s);
 	return Caps(s);
 }
 
@@ -110,7 +109,6 @@ protected function string getToNextTag()
 		if (s == "") return "";
 	}
 	wordno--;
-	log(":::: Return getToNextTag"@res);
 	return class'HttpUtil'.static.trim(res);
 }
 
@@ -125,7 +123,6 @@ protected function bool _rdf()
 		if (tag == "") return false;
 	}
 
-	log(":: Entering _rdf");
 	while ((tag != "/RSS") && (tag != "/RDF:RDF"))
 	{
 		tag = getTag(args);
@@ -145,7 +142,6 @@ protected function bool _rdf()
 protected function bool _channel(array<string> Args)
 {
 	local string tag;
-	log("::: Entering _channel");
 	while (tag != "/CHANNEL")
 	{
 		tag = getTag(args);
@@ -177,7 +173,6 @@ protected function bool _item(array<string> Args)
 {
 	local string tag;
 	local int n;
-	log("::: Entering _item");
 	n = Entries.length;
 	Entries.length = n+1;
 	while (tag != "/ITEM")
