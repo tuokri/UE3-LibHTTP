@@ -14,26 +14,42 @@
 	Released under the Lesser Open Unreal Mod License							<br />
 	http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense				<br />
 
-	<!-- $Id: NewsFeed.uc,v 1.8 2004/03/17 00:17:09 elmuerte Exp $ -->
+	<!-- $Id: NewsFeed.uc,v 1.9 2004/03/18 07:38:59 elmuerte Exp $ -->
 *******************************************************************************/
 
-class NewsFeed extends Object;
+class NewsFeed extends Object PerObjectConfig;
 
-/** The source of the data, you have to fill this in yourself */
-var string Source;
+/** name of this object */
+var(Config) config string rssHost;
+/** download location */
+var(Config) config string rssLocation;
+/** true if this feed is enabled */
+var(Config) config bool rssEnabled;
+/** minutes between updates, make this a nice value like 45 minutes */
+var(Config) config int rssUpdateInterval;
+
 /** Last time this source had been fetched, you have to do this yourself */
-var int LastUpdate;
+var(Config) config int LastUpdate;
 
-var string ChannelTitle;
-var string ChannelDescription;
-var string ChannelLink;
+/** Channel title as defined in the RSS file */
+var(RSSContent) config string ChannelTitle;
+/** Channel description as defined in the RSS file */
+var(RSSContent) config string ChannelDescription;
+/** Channel link as defined in the RSS file */
+var(RSSContent) config string ChannelLink;
 
+/** RDF\RSS item record */
 struct RDFRentry
 {
+	/** title of the RDF Entry */
 	var string Title;
+	/** link of the RDF Entry */
 	var string Link;
+	/** description of the RDF Entry */
+	var string Desc;
 };
-var array<RDFRentry> Entries;
+/** the current content */
+var(RSSContent) config array<RDFRentry> Entries;
 
 /** @ignore */
 var protected array<string> data, line;
@@ -197,6 +213,11 @@ protected function bool _item(array<string> Args)
 		else if (tag ~= "LINK")
 		{
 			Entries[n].Link = getToNextTag();
+			tag = getTag(args);
+		}
+		else if (tag ~= "DESCRIPTION")
+		{
+			Entries[n].Desc = getToNextTag();
 			tag = getTag(args);
 		}
 		if (tag == "") return false;
