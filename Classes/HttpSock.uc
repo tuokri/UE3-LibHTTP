@@ -44,8 +44,8 @@
 	* New function string
 		randString(optional int length, optional coerce string prefix)			<br />
 	* MultiPart divider string is now more unique								<br />
-	* Content-Length added multipart items										<br />
 	* Empty multipart items are never added										<br />
+	* Made more support functions public										<br />
 																				<br />
 	Dcoumentation and Information:
 		http://wiki.beyondunreal.com/wiki/LibHTTP								<br />
@@ -56,13 +56,13 @@
 	Released under the Lesser Open Unreal Mod License							<br />
 	http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense				<br />
 
-	<!-- $Id: HttpSock.uc,v 1.33 2004/09/30 15:58:55 elmuerte Exp $ -->
+	<!-- $Id: HttpSock.uc,v 1.34 2004/10/01 07:59:53 elmuerte Exp $ -->
 *******************************************************************************/
 
 class HttpSock extends Engine.Info config;
 
 /** LibHTTP version number */
-const VERSION = 350;
+const VERSION = 352;
 /**
 	If you make a custom build of this package, or subclass this class then
 	please change the following constant to countain your "extention" name. This
@@ -479,7 +479,6 @@ function bool setFormDataEx(string field, array<string> data, optional string co
 	RequestData[n++] = "Content-Disposition: form-data; name="$field;
 	if (contentType != "") RequestData[n++] = "Content-Type:"@contentType;
 	if (contentEncoding != "") RequestData[n++] = "Content-Encoding:"@contentEncoding;
-	RequestData[n++] = "Content-Length:"@size;
 	RequestData[n++] = "";
 	for (i = 0; i < data.length; i++)
 	{
@@ -637,7 +636,7 @@ function string getHTTPversion()
 }
 
 /** return if the authentication method is supported */
-function bool IsAuthMethodSupported(EAuthMethod method)
+static function bool IsAuthMethodSupported(EAuthMethod method)
 {
 	if (method == AM_Basic) return true;
 	else if (method == AM_Digest) return true;
@@ -646,7 +645,7 @@ function bool IsAuthMethodSupported(EAuthMethod method)
 }
 
 /** string to EAuthMethod */
-function EAuthMethod StrToAuthMethod(coerce string method)
+static function EAuthMethod StrToAuthMethod(coerce string method)
 {
 	if (method ~= "basic") return AM_Basic;
 	if (method ~= "digest") return AM_Digest;
@@ -654,7 +653,8 @@ function EAuthMethod StrToAuthMethod(coerce string method)
 }
 
 /**
-	Returns the current timestamp
+	Returns the current timestamp. Warning this is not a valid UNIX timestamp
+	because the timezone is unknown (e.g. timestamps are always GMT)
 */
 function int now()
 {
@@ -665,7 +665,7 @@ function int now()
 	Generates a random string. The size defaults to 16. Prefix isn't included
 	with the size;
 */
-function string randString(optional int size, optional coerce string prefix)
+static function string randString(optional int size, optional coerce string prefix)
 {
 	local string str;
 	local int i;
@@ -700,6 +700,22 @@ function string UserAgent()
 	res = "LibHTTP/"$VERSION@"(UnrealEngine2; build "@Level.EngineVersion$"; http://wiki.beyondunreal.com/wiki/LibHTTP ";
 	if (EXTENTION != "") res = res$";"@EXTENTION;
 	res = res$")";
+	return res;
+}
+
+/**
+	Return the actual data size of a string array, it appends sizeof(CRLF) for
+	each line. This is used for sending the RequestData.
+*/
+function int DataSize(array<string> data)
+{
+	local int i, res, crlflen;
+	res = 0;
+	crlflen = Len(CRLF);
+	for (i = 0; i < data.length; i++)
+	{
+		res += Len(data[i])+crlflen;
+	}
 	return res;
 }
 
@@ -803,22 +819,6 @@ function Logf(coerce string message, optional int level, optional coerce string 
 {
 	if (level == class'HttpUtil'.default.LOGERR) OnError(self, Message, Param1, Param2);
 	if (level <= iVerbose) class'HttpUtil'.static.Logf(Name, Message, Level, Param1, Param2);
-}
-
-/**
-	Return the actual data size of a string array, it appends sizeof(CRLF) for
-	each line. This is used for sending the RequestData.
-*/
-protected function int DataSize(array<string> data)
-{
-	local int i, res, crlflen;
-	res = 0;
-	crlflen = Len(CRLF);
-	for (i = 0; i < data.length; i++)
-	{
-		res += Len(data[i])+crlflen;
-	}
-	return res;
 }
 
 /** Parses the fully qualified URL */

@@ -14,7 +14,7 @@
 	Released under the Lesser Open Unreal Mod License							<br />
 	http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense				<br />
 
-	<!-- $Id: HttpUtil.uc,v 1.15 2004/09/30 15:58:55 elmuerte Exp $ -->
+	<!-- $Id: HttpUtil.uc,v 1.16 2004/10/01 07:59:53 elmuerte Exp $ -->
 *******************************************************************************/
 
 class HttpUtil extends Core.Object;
@@ -31,6 +31,17 @@ var const string MonthNames[13];
 var const string DayNamesLong[7], DayNamesShort[7];
 /** days offsets for each month*/
 var const int MonthOffset[13], MonthOffsetLeap[13];
+
+struct DateTime
+{
+	var int year;
+	var int month;
+	var int day;
+	var int weekday;
+	var int hour;
+	var int minute;
+	var int second;
+};
 
 /** MD5 context */
 struct MD5_CTX
@@ -258,6 +269,8 @@ static final function int stringToTimestamp(string datestring, optional int TZof
 {
 	local array<string> data, datePart, timePart;
 	local int i;
+	local float tzoff;
+
 	split(datestring, " ", data);
 	if (data.length == 6) // date is in spaced format
 	{
@@ -280,8 +293,9 @@ static final function int stringToTimestamp(string datestring, optional int TZof
 			}
 		}
 		if (Len(datePart[2]) == 2) datePart[2] = "20"$datePart[2];
+		tzoff = TZtoOffset(data[3]);
 		return timestamp(int(datePart[2]), int(datePart[1]), int(datePart[0]),
-			int(timePart[0])+TZoffset+TZtoOffset(data[3]), int(timePart[1]), int(timePart[2]));
+			int(timePart[0])+TZoffset+int(tzoff), int(timePart[1])+(tzoff%1*60), int(timePart[2]));
 	}
 	return 0;
 }
@@ -306,22 +320,14 @@ static final function int leapsThruEndOf(int y)
 	return ((y / 4) - (y / 100) + (y / 400));
 }
 
-/** the float % operator is broken */
+/** the float % operator is broken for our needs (numbers >2^24) */
 static final operator(18) int % ( int x, int y )
 {
 	return x-(x/y*y);
 }
 
-/**
-	convert a timestamp into a string. <br />
-	Format can be one of the following strings: <br />
-	"822", "1123" : RFC 822, updated by RFC 1123 (default), timezone is the TZ CODE <br />
-	"850", "1036" : RFC 850, obsoleted by RFC 1036, timezone is the TZ CODE  <br />
-	"2822" : RFC 2822, timezone is a +0000 like string <br />
-	"asctime": ANSI C's asctime() format, timezone is an integer that will increment the hour <br />
-	//	2004-02-12T15:19:21+00:00
-*/
-static final function string timestampToString(int timestamp, optional string Timezone, optional string format)
+/** converts a timestamp to a DateTime record */
+static final function DateTime timestampToDatetime(int timestamp)
 {
 	/*
 		Origin of the algorithm below:
@@ -330,7 +336,7 @@ static final function string timestampToString(int timestamp, optional string Ti
 	const SECS_PER_DAY = 86400;
 	const SECS_PER_HOUR = 3600;
 	local int days, rem, yg;
-	local int year, month, day, wday, hour, minute, second;
+	local DateTime dt;
 
 	days = timestamp / SECS_PER_DAY;
 	rem = timestamp % SECS_PER_DAY;
@@ -344,68 +350,160 @@ static final function string timestampToString(int timestamp, optional string Ti
 		rem -= SECS_PER_DAY;
 		++days;
 	}
-	hour = rem / SECS_PER_HOUR;
+	dt.hour = rem / SECS_PER_HOUR;
 	rem = rem % SECS_PER_HOUR;
-	minute = rem / 60;
-  	second = rem % 60;
+	dt.minute = rem / 60;
+  	dt.second  = rem % 60;
   	/* January 1, 1970 was a Thursday.  */
-	wday = (4 + days) % 7;
-	if (wday < 0) wday += 7;
- 	year = 1970;
+	dt.weekday = (4 + days) % 7;
+	if (dt.weekday < 0) dt.weekday += 7;
+ 	dt.year = 1970;
 
- 	while (days < 0 || days >= daysInYear(year))
+ 	while (days < 0 || days >= daysInYear(dt.year))
 	{
 		/* Guess a corrected year, assuming 365 days per year.  */
-		yg = year + days / DAYS_PER_YEAR - int(days % DAYS_PER_YEAR < 0);
+		yg = dt.year + days / DAYS_PER_YEAR - int(days % DAYS_PER_YEAR < 0);
 		/* Adjust DAYS and Y to match the guessed year.  */
-		days -= ((yg - year) * DAYS_PER_YEAR + leapsThruEndOf(yg - 1) - leapsThruEndOf(year - 1));
-		year = yg;
+		days -= ((yg - dt.year) * DAYS_PER_YEAR + leapsThruEndOf(yg - 1) - leapsThruEndOf(dt.year - 1));
+		dt.year = yg;
 	}
-	if (isLeapYear(year))
+	if (isLeapYear(dt.year))
 	{
 		for (yg = 11; days < default.MonthOffsetLeap[yg]; --yg) continue;
-		month = yg;
+		dt.month = yg;
 		days -= default.MonthOffsetLeap[yg];
 	}
 	else {
 		for (yg = 11; days < default.MonthOffset[yg]; --yg) continue;
-		month = yg;
+		dt.month = yg;
 		days -= default.MonthOffset[yg];
 	}
-	day = days + 1;
+	dt.day = days + 1;
+	return dt;
+}
 
+/**
+	convert a timestamp into a string. <br />
+	Format can be one of the following strings: <br />
+	"822", "1123" : RFC 822, updated by RFC 1123 (default), timezone is the TZ CODE <br />
+	"850", "1036" : RFC 850, obsoleted by RFC 1036, timezone is the TZ CODE  <br />
+	"2822" : RFC 2822, timezone is a +0000 like string <br />
+	"asctime": ANSI C's asctime() format, timezone is an integer that will increment the hour <br />
+	//	2004-02-12T15:19:21+00:00
+*/
+static final function string timestampToString(int timestamp, optional string Timezone, optional string format)
+{
+	local DateTime dt;
+	dt = timestampToDatetime(timestamp);
 	switch (format)
 	{
 		case "850":
 		case "1036":
 			if (Timezone == "") Timezone = "GMT";
-			format = default.DayNamesLong[wday]$", "$Right("0"$day, 2)$"-"$default.MonthNames[month+1]$"-"$Year@Right("0"$hour, 2)$":"$Right("0"$minute, 2)$":"$Right("0"$second, 2)@Timezone;
+			format = default.DayNamesLong[dt.weekday]$", "$Right("0"$dt.day, 2)$"-"$default.MonthNames[dt.month+1]$"-"$dt.Year@Right("0"$dt.hour, 2)$":"$Right("0"$dt.minute, 2)$":"$Right("0"$dt.second, 2)@Timezone;
 			return format;
 		case "asctime":
-			hour += int(Timezone);
-			format = default.DayNamesShort[wday]@default.MonthNames[month+1]@Right(" "$day, 2)@Right("0"$hour, 2)$":"$Right("0"$minute, 2)$":"$Right("0"$second, 2)@year;
+			dt.hour += int(Timezone);
+			dt.minute += int(float(Timezone) % 1 * 60);
+			format = default.DayNamesShort[dt.weekday]@default.MonthNames[dt.month+1]@Right(" "$dt.day, 2)@Right("0"$dt.hour, 2)$":"$Right("0"$dt.minute, 2)$":"$Right("0"$dt.second, 2)@dt.year;
 			return format;
 		case "2822":
 			if (Timezone == "") Timezone = "+0000";
-			format = default.DayNamesShort[wday]$", "$Right("0"$day, 2)@default.MonthNames[month+1]@Year@Right("0"$hour, 2)$":"$Right("0"$minute, 2)$":"$Right("0"$second, 2)@Timezone;
+			format = default.DayNamesShort[dt.weekday]$", "$Right("0"$dt.day, 2)@default.MonthNames[dt.month+1]@dt.Year@Right("0"$dt.hour, 2)$":"$Right("0"$dt.minute, 2)$":"$Right("0"$dt.second, 2)@Timezone;
 			return format;
 		// case: 822
 		// case: 1123
 		default:
 			if (Timezone == "") Timezone = "GMT";
-			format = default.DayNamesShort[wday]$", "$Right("0"$day, 2)@default.MonthNames[month+1]@Year@Right("0"$hour, 2)$":"$Right("0"$minute, 2)$":"$Right("0"$second, 2)@Timezone;
+			format = default.DayNamesShort[dt.weekday]$", "$Right("0"$dt.day, 2)@default.MonthNames[dt.month+1]@dt.Year@Right("0"$dt.hour, 2)$":"$Right("0"$dt.minute, 2)$":"$Right("0"$dt.second, 2)@Timezone;
 			return format;
 	}
 }
 
 /**
-	Converts a timezone to an offset
+	Converts a timezone code to an offset.
 */
-static final function int TZtoOffset(string TZ)
+static final function float TZtoOffset(string TZ)
 {
-	if (TZ ~= "GMT") return 0;
-	else if (TZ ~= "CET") return 1;
-	else if (TZ ~= "CEST") return 2;
+	TZ = Caps(TZ);
+	switch (TZ)
+	{
+		case "GMT":		// Greenwich Mean
+		case "UT":		// Universal (Coordinated)
+		case "UTC":
+		case "WET":		// Western European
+			return 0;
+		case "WAT":		// West Africa
+		case "AT":		// Azores
+			return -1;
+		//case "BST":		// Brazil Standard
+		//case "GST":		// Greenland Standard
+		//case "NFT":		// Newfoundland
+		//case "NST":		// ewfoundland Standard
+		//	return -3;
+		case "AST":		// Atlantic Standard
+			return -4;
+		case "EST":		// Eastern Standard
+			return -5;
+		case "CST":		// Central Standard
+			return -6;
+		case "MST":		// Mountain Standard
+			return -7;
+		case "PST":		// acific Standard
+			return -8;
+		case "YST":		// Yukon Standard
+			return -9;
+		case "HST":		// Hawaii Standard
+		case "CAT":		// Central Alaska
+		case "AHST":	// Alaska-Hawaii Standard
+			return -10;
+		case "NT":		// Nome
+			return -11;
+		case "IDLW":	// International Date Line West
+			return -12;
+		case "CET":		// Central European
+		case "MET":		// Middle European
+		case "MEWT":	// Middle European Winter
+		case "SWT":		// Swedish Winter
+		case "FWT":		// French Winter
+			return 1;
+		case "CEST":	// Central European Summer
+		case "EET":		// Eastern Europe, USSR Zone 1
+			return 2;
+		case "BT":		// Baghdad, USSR Zone 2
+			return 3;
+		//case "IT":		// Iran
+		//	return 3.5;
+		case "ZP4":		// USSR Zone 3
+			return 4;
+		case "ZP5":		// USSR Zone 4
+			return 5;
+		case "IST":		// Indian Standard
+			return 5.5;
+		case "ZP6":		// USSR Zone 5
+			return 6;
+		//case "NST":		// North Sumatra
+		//	return 6.5;
+		//case "SST":		// South Sumatra, USSR Zone 6
+		case "WAST":	// West Australian Standard
+			return 7;
+		//case "JT":		// ava (3pm in Cronusland!)
+		//	return 7.5;
+		case "CCT":		// China Coast, USSR Zone 7
+			return 8;
+		case "JST":		// Japan Standard, USSR Zone 8
+			return 9;
+		//case "CAST":	// Central Australian Standard
+		//	return 9.5;
+		case "EAST":	// Eastern Australian Standard
+		case "GST":		// Guam Standard, USSR Zone 9
+			return 10;
+		case "NZT":		// New Zealand
+		case "NZST":	// New Zealand Standard
+		case "IDLE":	// International Date Line East
+			return 12;
+
+	}
 	return int(tz);
 
 }

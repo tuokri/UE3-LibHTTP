@@ -1,4 +1,4 @@
-<h1>LibHTTP3</h1>
+<h1>LibHTTP 3.5</h1>
 LibHTTP is a general perpose library for UnrealEngine2. It allows you to fetch files stored on webservers. <br />
 Features:
 <ul>
@@ -18,6 +18,7 @@ Features:
 <h2>Download</h2>
 The downloads include the binary .u file and the source. DO NOT recompile the source, use the binary, or else users can get a "modified package" error.
 <ul>
+<li>Version 3.5 <a href="http://ut2004.elmuerte.com/files/LibHTTP3_5.zip">[zip]</a> (UT2004)</li>
 <li>Version 3 <a href="http://ut2004.elmuerte.com/files/LibHTTP3.zip">[zip]</a> (UT2004)</li>
 <li>Version 2 <a href="http://ut2004.elmuerte.com/files/LibHTTP2.zip">[zip]</a> (UT2004)</li>
 <li>Version 2 <a href="http://ut2004.elmuerte.com/files/LibHTTP2x3.zip">[zip]</a> (UT2003)</li>
@@ -144,5 +145,16 @@ New in version 300:
 		(and the cookies hasn't been set)</li>
 </ul>
 
+New in version 350:
+<ul>
+<li>All delegates contains a HttpSock Sender argument</li>
+<li>New function string randString(optional int length, optional coerce string prefix)</li>
+<li>MultiPart divider string is now more unique (prevents potential issues with the content data)</li>
+<li>Empty multipart items are never added</li>
+<li>Made more support functions public</li>
+<li>New utility function string timestampToString(int timestamp, optional string Timezone, optional string format) that will convert a UNIX timestamp to a string (RFC 1123, RFC 1036, RFC 2822, ANSI C asctime formats supported)</li>
+<li>Fixed potentional issues with timestamps and cookies</li>
+</ul>
+
 <h2>Copyright</h2>
-Copyright 2004, Michiel "El Muerte" Hendriks &lt;elmuerte <i>at</i> drunksnipers.com&gt;
+Copyright 2003, 2004, Michiel "El Muerte" Hendriks &lt;elmuerte <i>at</i> drunksnipers.com&gt;
