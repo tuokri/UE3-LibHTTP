@@ -5,7 +5,13 @@
 
 	Authors:	Michiel 'El Muerte' Hendriks <elmuerte@drunksnipers.com>
 
-	$Id: HttpSock.uc,v 1.2 2003/07/29 01:35:56 elmuerte Exp $
+	$Id: HttpSock.uc,v 1.3 2003/07/29 01:41:43 elmuerte Exp $
+
+	TODO:
+	- support POST
+	- support Basic Authentication
+	- implement RawUrlEncode
+	- add cookie support
 */
 
 class HttpSock extends TcpLink config;
