@@ -16,7 +16,7 @@
 
 	Authors:	Michiel 'El Muerte' Hendriks <elmuerte@drunksnipers.com>
 
-	$Id: HttpSock.uc,v 1.9 2003/07/30 19:39:34 elmuerte Exp $
+	$Id: HttpSock.uc,v 1.10 2003/07/30 22:05:49 elmuerte Exp $
 */
 
 class HttpSock extends TcpLink config;
@@ -552,54 +552,12 @@ protected function SendData(string data, optional bool bFlush)
 */
 protected function string genBasicAuthorization(string Username, string Password)
 {
-	local int i, dl;
-	local string res;
-	local array<byte> inp;
-	local array<string> outp;
-	if (authBasicLookup.length == 0) class'HttpUtil'.static.Base64LookupTable(authBasicLookup);
-	res = Username$":"$Password;
-	// convert string to byte array
-	for (i = 0; i < len(res); i++)
-	{
-		inp[i] = Asc(Mid(res, i, 1));
-	}
-	dl = inp.length;
-	// fix byte array
-	if ((dl%3) == 1) 
-	{
-		inp[inp.length] = 0; 
-		inp[inp.length] = 0;
-	}
-	if ((dl%3) == 2) 
-	{
-		inp[inp.length] = 0;
-	}
-	i = 0;
-	while (i < dl)
-	{
-		outp[outp.length] = authBasicLookup[(inp[i] >> 2)];
-		outp[outp.length] = authBasicLookup[((inp[i]&3)<<4) | (inp[i+1]>>4)];
-		outp[outp.length] = authBasicLookup[((inp[i+1]&15)<<2) | (inp[i+2]>>6)];
-		outp[outp.length] = authBasicLookup[(inp[i+2]&63)];
-		i += 3;
-	}
-	// pad result
-	if ((dl%3) == 1) 
-	{
-		outp[outp.length-1] = "="; 
-		outp[outp.length-2] = "=";
-	}
-	if ((dl%3) == 2) 
-	{
-		outp[outp.length-1] = "=";
-	}
-	res = "";
-	for (i = 0; i < outp.length; i++)
-	{
-		res = res$outp[i];
-	}	
-	Logf("Base 64 encoding", class'HttpUtil'.default.LOGINFO, Username$":"$Password, res);
-	return "Basic"@res;
+	local array<string> res;
+	if (authBasicLookup.length == 0) class'HttpUtil'.static.Base64EncodeLookupTable(authBasicLookup);
+	res[0] = Username$":"$Password;
+	res = class'LibHTTP.HttpUtil'.static.Base64Encode(res, authBasicLookup);
+	Logf("Base 64 encoding", class'HttpUtil'.default.LOGINFO, Username$":"$Password, res[0]);
+	return "Basic"@res[0];
 }
 
 /**
