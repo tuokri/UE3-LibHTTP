@@ -14,7 +14,7 @@
 	Released under the Lesser Open Unreal Mod License							<br />
 	http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense				<br />
 
-	<!-- $Id: HttpUtil.uc,v 1.11 2004/09/22 09:32:02 elmuerte Exp $ -->
+	<!-- $Id: HttpUtil.uc,v 1.12 2004/09/23 20:36:47 elmuerte Exp $ -->
 *******************************************************************************/
 
 class HttpUtil extends Object;
@@ -469,6 +469,32 @@ static function string MD5String (string str)
 
 	MD5Init (context);
 	MD5Update (context, str, Len(str));
+	digest.Length = 16;
+	MD5Final (digest, context);
+
+	for (i = 0; i < 16; i++)
+		Hex = Hex $ DecToHex(digest[i], 1);
+
+	return Hex;
+}
+
+/**
+	Return the MD5 of the input string array.
+	Concat is added after each line.
+*/
+static function string MD5StringArray (array<string> stra, optional string Concat)
+{
+	local MD5_CTX context;
+	local array<byte> digest;
+	local string Hex, str;
+	local int i;
+
+	MD5Init (context);
+	for (i = 0; i < stra.length; i++)
+	{
+		str = stra[i]$concat;
+		MD5Update (context, str, Len(str));
+	}
 	digest.Length = 16;
 	MD5Final (digest, context);
 

@@ -11,7 +11,7 @@
 	Released under the Lesser Open Unreal Mod License							<br />
 	http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense				<br />
 
-	<!-- $Id: HttpCookies.uc,v 1.8 2004/09/22 09:32:02 elmuerte Exp $ -->
+	<!-- $Id: HttpCookies.uc,v 1.9 2004/09/23 20:36:47 elmuerte Exp $ -->
 *******************************************************************************/
 
 class HttpCookies extends Object config parseconfig;
@@ -86,6 +86,7 @@ function AddCookie(string cname, string value, int CurrentTimeStamp, optional in
 	CookieData[i].Expires = expires;
 	CookieData[i].Domain = Domain;
 	CookieData[i].Path = Path;
+	SaveConfig();
 }
 
 /**
@@ -117,7 +118,7 @@ function string GetCookieString(string Domain, string Path, int CurrentTimeStamp
 	local bool bDirty;
 
 	bDirty = false;
-	for (i = CookieData.Length-1; i > 0 ; i--)
+	for (i = CookieData.Length-1; i >= 0 ; i--)
 	{
 		if ((CookieData[i].Expires <= CurrentTimeStamp) && (CookieData[i].Expires > 0))
 		{
@@ -129,8 +130,8 @@ function string GetCookieString(string Domain, string Path, int CurrentTimeStamp
 		{
 			if (Left(Path, Len(CookieData[i].Path)) == CookieData[i].Path) // case sensitive
 			{
-				if (res != "") res = res$";";
-				res = res@CookieData[i].Name$"="$CookieData[i].Value;
+				if (res != "") res = res$"; ";
+				res = res$CookieData[i].Name$"="$CookieData[i].Value;
 			}
 		}
 	}

@@ -29,8 +29,11 @@
 		setting the right user/pass in the beginning. Otherwise the code using
 		this library will have to do additional processing when the proxy
 		user and pass are not accepted.											<br />
-	* Better authorisation support												<br />
-	* Support for digest authentication (more secure HTTP authentication)		<br />
+	* Better support for various authentication methods							<br />
+	* Support for digest authentication (more secure HTTP authentication). When
+		digest is used instead of basic the client has to make 2 requests. With
+		the first request the server will send information needed to construct
+		the response. Basic authentication doesn't have this issue.				<br />
 																				<br />
 	Dcoumentation and Information:
 		http://wiki.beyondunreal.com/wiki/LibHTTP								<br />
@@ -41,14 +44,11 @@
 	Released under the Lesser Open Unreal Mod License							<br />
 	http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense				<br />
 
-	<!-- $Id: HttpSock.uc,v 1.26 2004/09/22 09:32:02 elmuerte Exp $ -->
+	<!-- $Id: HttpSock.uc,v 1.27 2004/09/23 20:36:47 elmuerte Exp $ -->
 *******************************************************************************/
 /*
 	TODO:
-	- implement fast get (within a tick with set limits/manual transfer)
-	- add HEAD support
 	- add changed since
-	- make cookies savable in Xs
 */
 class HttpSock extends Info config;
 
@@ -96,6 +96,7 @@ var(URL) config string DefaultAccept;
 */
 enum EAuthMethod
 {
+	AM_None,
 	AM_Unknown,
 	AM_Basic,
 	AM_Digest,
@@ -210,6 +211,10 @@ var array<RequestHistoryEntry> RequestHistory;
 
 /** duration of the last request */
 var float RequestDuration;
+/**
+	start of the request, will be set after the connection was opened and before
+	the actual request will be send
+*/
 var protected float StartRequestTime;
 
 /** the link class to use */
@@ -272,6 +277,11 @@ struct ResolveCacheEntry
 var protected array<ResolveCacheEntry> ResolveCache;
 /** the hostname being resolved, used to add to the resolve cache */
 var protected string ResolveHostname;
+/**
+	received cookie data, will be postponed until the whole header has been
+	received
+*/
+var protected array<string> PendingCookieData;
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -314,7 +324,8 @@ delegate OnConnectionTimeout();
 delegate OnComplete();
 
 /**
-	Called before the connection is established
+	Called before the connection is established. If you want to add/change
+	headers, you should do it here.
 */
 delegate OnPreConnect();
 
@@ -351,6 +362,19 @@ delegate OnRequireProxyAuthorization(EAuthMethod method, array<GameInfo.KeyValue
 //   Public functions
 //
 ////////////////////////////////////////////////////////////////////////////////
+
+/**
+	This function will clear the previous request data. You may want to use this
+	when you do a new request with the same socket. Previous set headers won't
+	be unset automatically. <br />
+	Note, this doesn't reset authentication information. To reset authentication
+	data simply set the AuthMethod to AM_None.
+*/
+function ClearRequestData()
+{
+	RequestData.length = 0;
+	RequestHeaders.Length = 0;
+}
 
 /**
 	This will perform a simple HTTP GET request. This will be the most commonly
@@ -528,7 +552,7 @@ function bool Abort()
 	if (HttpLink == none) return true;
 	switch (curState)
 	{
-		case HTTPState_Connecting:
+		case HTTPState_Connecting: CloseSocket(); return HttpLink == none;
 		case HTTPState_ReceivingData: if (HttpLink.IsConnected()) return HttpLink.Close();
 	}
 	return false;
@@ -562,7 +586,16 @@ function bool IsAuthMethodSupported(EAuthMethod method)
 {
 	if (method == AM_Basic) return true;
 	else if (method == AM_Digest) return true;
+	else if (method == AM_None) return true;
 	return false;
+}
+
+/** string to EAuthMethod */
+function EAuthMethod StrToAuthMethod(coerce string method)
+{
+	if (method ~= "basic") return AM_Basic;
+	if (method ~= "digest") return AM_Digest;
+	return AM_Unknown;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -580,7 +613,6 @@ function bool IsAuthMethodSupported(EAuthMethod method)
 */
 protected function bool HttpRequest(string location, string Method)
 {
-	local string tmp;
 	if (curState != HTTPState_Closed)
 	{
 		Logf("HttpSock not closed", class'HttpUtil'.default.LOGERR, GetEnum(enum'HTTPState', curState));
@@ -624,12 +656,11 @@ protected function bool HttpRequest(string location, string Method)
 	AddHeader("Accept", DefaultAccept);
 	if (IsAuthMethodSupported(AuthMethod))
 	{
-		tmp = genAuthorization(AuthMethod, sAuthUsername, sAuthPassword, AuthInfo);
-		if (tmp != "") AddHeader("Authorization", tmp);
+		AddHeader("Authorization", genAuthorization(AuthMethod, sAuthUsername, sAuthPassword, AuthInfo));
 	}
-	if ((Method ~= "POST") && (InStr(RequestLocation, "?") > -1 ))
+	if ((Method ~= HTTP_POST) && (InStr(RequestLocation, "?") > -1 ))
 	{
-		//TODO: combine  URL options and existing post data
+		//TODO: combine URL options and existing post data
 		RequestData.length = 1;
 		Divide(RequestLocation, "?", RequestLocation, RequestData[0]);
 		AddHeader("Content-Type", "application/x-www-form-urlencoded");
@@ -866,6 +897,7 @@ function Opened()
 	curState = HTTPState_SendingRequest;
 	inBuffer = ""; // clear buffer
 	outBuffer = ""; // clear buffer
+	PendingCookieData.length = 0;
 	if (bUseProxy) SendData(RequestMethod@"http://"$sHostname$":"$string(iPort)$RequestLocation@"HTTP/"$HTTPVER);
 		else SendData(RequestMethod@RequestLocation@"HTTP/"$HTTPVER);
 	totalDataSize = DataSize(RequestData);
@@ -873,10 +905,16 @@ function Opened()
 	{
 		AddHeader("Content-Length", string(totalDataSize));
 	}
+	else {
+		RemoveHeader("Content-Length");
+		RemoveHeader("Content-Type");
+	}
+
 	if (bSendCookies && (Cookies != none))
 	{
 		AddHeader("Cookie", Cookies.GetCookieString(sHostname, RequestLocation, now()));
 	}
+	else RemoveHeader("Cookie"); // cookies should be set via the HttpCookie class
 	for (i = 0; i < RequestHeaders.length; i++)
 	{
 		SendData(RequestHeaders[i]);
@@ -920,7 +958,7 @@ function Closed()
 	else {
 		CurRedir++;
 		if (iMaxRedir >= CurRedir) Logf("MaxRedir reached", class'HttpUtil'.default.LOGWARN, iMaxRedir, CurRedir);
-		i = RequestHistory.Length;
+		i = RequestHistory.Length-1;
 		if (!OnFollowRedirect("http://"$sHostname$RequestLocation)) return;
 		AddHeader("Referer", "http://"$RequestHistory[i].Hostname$RequestHistory[i].Location);
 		OpenConnection();
@@ -984,6 +1022,10 @@ protected function ProcInput(string inline)
 		if (inline == "")
 		{
 			procHeader = false;
+			for (i = 0; i < PendingCookieData.length; i++)
+			{
+				Cookies.ParseCookieData(PendingCookieData[i], sHostname, RequestLocation, now(), true, TZoffset);
+			}
 			return;
 		}
 
@@ -1008,13 +1050,13 @@ protected function ProcInput(string inline)
 		retc = InStr(inline, ":");
 		if (FollowingRedir)
 		{
-			if (Left(inline, retc) ~= "location")
+			if (Left(inline, retc) ~= "location" && RequestMethod != HTTP_HEAD) // don't redirect on HEAD
 			{
 				Logf("Redirect Location", class'HttpUtil'.default.LOGINFO, inline);
 				RequestLocation = class'HttpUtil'.static.Trim(Mid(inline, retc+1));
 				if (RequestMethod != HTTP_GET) // redir is always a GET
 				{
-					Logf("Changing request method to GET", class'HttpUtil'.default.LOGWARN, RequestMethod);
+					Logf("Changing request method to GET for redirection", class'HttpUtil'.default.LOGWARN, RequestMethod);
 					RequestMethod = HTTP_GET;
 				}
 				//TODO: perform more checks
@@ -1027,7 +1069,7 @@ protected function ProcInput(string inline)
 		{
 			if (Left(inline, retc) ~= "set-cookie")
 			{
-				Cookies.ParseCookieData(Mid(inline, retc+1), sHostname, RequestLocation, now(), true, TZoffset);
+				PendingCookieData[PendingCookieData.Length] = Mid(inline, retc+1);
 			}
 		}
 		if (Left(inline, retc) ~= "date")
@@ -1066,7 +1108,7 @@ protected function ProcInput(string inline)
 }
 
 /**
-	Send data buffered<br />
+	Send data buffered <br />
 	if bFlush it will flush all remaining data (should be used for the last call)
 */
 protected function SendData(string data, optional bool bFlush)
@@ -1090,16 +1132,8 @@ protected function SendData(string data, optional bool bFlush)
 	}
 }
 
-/** string to AuthMethod */
-function EAuthMethod StrToAuthMethod(coerce string method)
-{
-	if (method ~= "basic") return AM_Basic;
-	if (method ~= "digest") return AM_Digest;
-	return AM_Unknown;
-}
-
 /**
-	Process the header data send by a WWW-Authenticate header;
+	Process the header data of a WWW-Authenticate or Proxy-Authorization header
 */
 protected function ProccessWWWAuthenticate(string HeaderData, bool bProxyAuth)
 {
@@ -1123,7 +1157,6 @@ protected function ProccessWWWAuthenticate(string HeaderData, bool bProxyAuth)
 
 		for (i = 0; i < elements.length; i++)
 		{
-			log(elements[i]);
 			Divide(elements[i], "=", k, v);
 			if (bProxyAuth)
 			{
@@ -1151,7 +1184,10 @@ protected function ProccessWWWAuthenticate(string HeaderData, bool bProxyAuth)
 	}
 }
 
-/** generate the authentication data */
+/**
+	generate the authentication data, depending on the method it will be either
+	a Basic or Digest response
+*/
 protected function string genAuthorization(EAuthMethod method, string Username, string Password, array<GameInfo.KeyValuePair> Info)
 {
 	if (method == AM_Basic) return genBasicAuthorization(Username, Password);
@@ -1160,7 +1196,7 @@ protected function string genAuthorization(EAuthMethod method, string Username, 
 }
 
 /**
-	Generated a basic authentication
+	Generated a basic authentication response
 */
 protected function string genBasicAuthorization(string Username, string Password)
 {
@@ -1172,7 +1208,10 @@ protected function string genBasicAuthorization(string Username, string Password
 	return "Basic"@res[0];
 }
 
-protected function string GetValue(string key, array<GameInfo.KeyValuePair> Info, optional string def)
+/**
+	Returns the value of a <code>KeyValuePair</code>
+*/
+static function string GetValue(string key, array<GameInfo.KeyValuePair> Info, optional string def)
 {
 	local int i;
 	for (i = 0; i < info.length; i++)
@@ -1204,6 +1243,7 @@ protected function string genDigestAuthorization(string Username, string Passwor
 		cnonce = class'HttpUtil'.static.MD5String(""$frand());
 		result = result$"cnonce=\""$cnonce$"\", ";
 		result = result$"nc=00000001, "; // always 1st request
+		result = result$"qop=\""$qop$"\", ";
 	}
 
 	alg = Caps(GetValue("algorithm", info, "MD5"));
@@ -1217,15 +1257,15 @@ protected function string genDigestAuthorization(string Username, string Passwor
 			a1 = a1$":"$GetValue("nonce", info)$":"$cnonce;
 		}
 		// A2
-		if (qop == "" || qop == "AUTH") a2 = class'HttpUtil'.static.MD5String(Caps(RequestMethod)$":"$RequestLocation);
-		else if (qop ~= "AUTH-INT")
+		if (qop == "" || qop ~= "auth") a2 = class'HttpUtil'.static.MD5String(Caps(RequestMethod)$":"$RequestLocation);
+		else if (qop ~= "auth-int")
 		{
-			a2 = class'HttpUtil'.static.MD5String("?"); //TODO: hash request body
+			a2 = class'HttpUtil'.static.MD5Stringarray(RequestData, CRLF);
 			a2 = class'HttpUtil'.static.MD5String(Caps(RequestMethod)$":"$RequestLocation$":"$a2);
 		}
 		// KD
 		if (qop == "") tmp = class'HttpUtil'.static.MD5String(a1$":"$GetValue("nonce", info)$":"$a2);
-		else if (qop ~= "AUTH" || qop ~= "AUTH-INT")
+		else if (qop ~= "auth" || qop ~= "auth-int")
 		{
 			tmp = class'HttpUtil'.static.MD5String(a1$":"$GetValue("nonce", info)$":00000001:"$cnonce$":"$qop$":"$a2);
 		}
@@ -1262,5 +1302,5 @@ defaultproperties
 	TransferMode=TM_Normal
 	iMaxIterationsPerTick=32
 	iMaxBytesPerTick=4096
-	AuthMethod=AM_Basic
+	AuthMethod=AM_None
 }
