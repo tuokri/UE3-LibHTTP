@@ -1,18 +1,18 @@
 /**
 	HttpSock
-	Base of LibHTTP this implements the main network methods for connecting to a
+	Base of [[LibHTTP]] this implements the main network methods for connecting to a
 	webserver and retreiving data from it
 
 	Features:
-	- GET/POST support
-	- Supports transparent redirecting
-	- Basic Authentication support
-	- Header management
-	- Cookie management
+	* GET/POST support
+	* Supports transparent redirecting
+	* Basic Authentication support
+	* Header management
+	* Cookie management
 
 	Authors:	Michiel 'El Muerte' Hendriks <elmuerte@drunksnipers.com>
 
-	$Id: HttpSock.uc,v 1.5 2003/07/29 14:03:43 elmuerte Exp $
+	$Id: HttpSock.uc,v 1.6 2003/07/29 14:13:21 elmuerte Exp $
 */
 
 class HttpSock extends TcpLink config;
@@ -23,7 +23,7 @@ const VERSION = 102;
 /** the output buffer size */
 const BUFFERSIZE = 2048;
 
-/** constant CR LF*/
+/** constant CR LF */
 var protected string CRLF;
 
 /** The HTTP version to use, 1.0 adviced */

@@ -1,10 +1,10 @@
 /**
 	HttpCookies
-	Cookie management system
+	Cookie management system. Part of [[LibHTTP]].
 
 	Authors:	Michiel 'El Muerte' Hendriks <elmuerte@drunksnipers.com>
 
-	$Id: HttpCookies.uc,v 1.1 2003/07/29 14:03:43 elmuerte Exp $
+	$Id: HttpCookies.uc,v 1.2 2003/07/29 14:13:21 elmuerte Exp $
 */
 
 class HttpCookies extends Object config;

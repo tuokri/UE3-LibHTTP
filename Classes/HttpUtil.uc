@@ -1,10 +1,10 @@
 /**
 	HttpUtil
-	Static functions used in all libraries
+	Static functions used in all classes. Part of [[LibHTTP]].
 
 	Authors:	Michiel 'El Muerte' Hendriks <elmuerte@drunksnipers.com>
 
-	$Id: HttpUtil.uc,v 1.1 2003/07/29 14:03:43 elmuerte Exp $
+	$Id: HttpUtil.uc,v 1.2 2003/07/29 14:13:21 elmuerte Exp $
 */
 
 class HttpUtil extends Object;
