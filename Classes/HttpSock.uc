@@ -28,13 +28,16 @@
 	Released under the Lesser Open Unreal Mod License							<br />
 	http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense				<br />
 
-	<!-- $Id: HttpSock.uc,v 1.18 2004/03/26 15:29:05 elmuerte Exp $ -->
+	<!-- $Id: HttpSock.uc,v 1.19 2004/09/02 11:47:38 elmuerte Exp $ -->
 *******************************************************************************/
-
+/*
+	TODO:
+	- implement fast get (within a tick with set limits/manual transfer)
+*/
 class HttpSock extends Info config;
 
 /** LibHTTP version number */
-const VERSION = 201;
+const VERSION = 202;
 
 /** the output buffer size */
 const BUFFERSIZE = 2048;
@@ -109,7 +112,7 @@ struct RequestHistoryEntry
 var array<RequestHistoryEntry> RequestHistory;
 
 /** the link class to use */
-var protected string HttpLinkClass;
+var protected class<HttpLink> HttpLinkClass;
 /** @ignore */
 var protected HttpLink HttpLink;
 /** @ignore */
@@ -647,15 +650,15 @@ function Closed()
 /** create the socket, if required */
 function bool CreateSocket()
 {
-	local class<HttpLink> linkclass;
+	// local class<HttpLink> linkclass;
 	if (HttpLink != none) return true;
-	linkclass = class<HttpLink>(DynamicLoadObject(HttpLinkClass, class'Class', false));
-	if (linkclass == none)
+	// linkclass = class<HttpLink>(DynamicLoadObject(HttpLinkClass, class'Class', false));
+	if (HttpLinkClass == none)
 	{
 		Logf("Error creating link class", class'HttpUtil'.default.LOGERR, HttpLinkClass);
 		return false;
 	}
-	HttpLink = spawn(linkclass);
+	HttpLink = spawn(HttpLinkClass);
 	HttpLink.setSocket(self);
 	Logf("Socket created", class'HttpUtil'.default.LOGINFO, HttpLink);
 	return true;
@@ -827,5 +830,5 @@ defaultproperties
 	bProcCookies=false
 	bUseProxy=false
 	fConnectTimout=60
-	HttpLinkClass="LibHTTP2.HttpLink"
+	HttpLinkClass=class'HttpLink'
 }
