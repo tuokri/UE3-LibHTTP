@@ -19,7 +19,7 @@
 	* Added connection timeout													<br />
 	* More delegates															<br />
 																				<br />
-	New in version 300:															<br />
+	new in version 300:															<br />
 	* bug fixes																	<br />
 	* Improved easy of use:
 		get(), post(), head()													<br />
@@ -48,7 +48,7 @@
 	Released under the Lesser Open Unreal Mod License							<br />
 	http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense				<br />
 
-	<!-- $Id: HttpSock.uc,v 1.28 2004/09/24 07:57:55 elmuerte Exp $ -->
+	<!-- $Id: HttpSock.uc,v 1.29 2004/09/25 10:13:04 elmuerte Exp $ -->
 *******************************************************************************/
 
 class HttpSock extends Info config;
@@ -229,7 +229,7 @@ var protected string inBuffer, outBuffer;
 /** @ignore */
 var protected bool procHeader;
 
-/** @ingore */
+/** @ignore */
 var protected InternetLink.IpAddr LocalLink;
 /** the port we are connected to */
 var protected int BoundPort;
@@ -327,8 +327,7 @@ delegate OnConnectionTimeout();
 delegate OnComplete();
 
 /**
-	Called before the connection is established. If you want to add/change
-	headers, you should do it here.
+	Called before the connection is established.
 */
 delegate OnPreConnect();
 
@@ -336,6 +335,34 @@ delegate OnPreConnect();
 	Called when Open() fails
 */
 delegate OnConnectError();
+
+/**
+	This delegate will be send right before the headers are send to the
+	webserver. If you want to change the headers you should do it here. <br />
+	Warning: becarefull not to change or unset automatically generated headers
+	that are important for this request (like authentication or request body
+	headers)
+*/
+delegate OnSendRequestHeaders();
+
+/**
+	Will be called when the request body has to be send. Do note that you are
+	required to set the	<code>Content-Length</code> header to the total size of
+	the content being send. If you use this delegate to send the request body
+	manually you will have to set the Content-Length header yourself.
+*/
+delegate OnRequestBody();
+
+/**
+	Will be called for every response line received (only the body). Return
+	false to stop the default behavior of storing the response body. Use this
+	delegate if you need to have life updates of the content and can not wait
+	until the request is complete.
+*/
+delegate bool OnResponseBody(string line)
+{
+	return true;
+}
 
 /**
 	Called before the redirection is followed, return false to prevernt following
@@ -429,7 +456,7 @@ function bool postex(string location, optional array<string> PostData)
 function bool setFormDataEx(string field, array<string> data, optional string contentType, optional string contentEncoding)
 {
 	local int n, i;
-	if (MultiPartBoundary == "") MultiPartBoundary = "AaB03x"; //TODO create random
+	if (MultiPartBoundary == "") MultiPartBoundary = class'HttpUtil'.static.DecToHex(rand(MaxInt), 3);
 	AddHeader("Content-Type", "multipart/form-data; boundary="$MultiPartBoundary);
 	n = RequestData.length;
 	if (n > 0) n--; // remove previous end
@@ -625,6 +652,7 @@ function EAuthMethod StrToAuthMethod(coerce string method)
 */
 protected function bool HttpRequest(string location, string Method)
 {
+	local string tmp;
 	if (curState != HTTPState_Closed)
 	{
 		Logf("HttpSock not closed", class'HttpUtil'.default.LOGERR, GetEnum(enum'HTTPState', curState));
@@ -672,10 +700,17 @@ protected function bool HttpRequest(string location, string Method)
 	}
 	if ((Method ~= HTTP_POST) && (InStr(RequestLocation, "?") > -1 ))
 	{
-		//TODO: combine URL options and existing post data
-		RequestData.length = 1;
-		Divide(RequestLocation, "?", RequestLocation, RequestData[0]);
-		AddHeader("Content-Type", "application/x-www-form-urlencoded");
+		if (GetRequestHeader("Content-Type", "application/x-www-form-urlencoded") ~= "application/x-www-form-urlencoded")
+		{
+			Divide(RequestLocation, "?", RequestLocation, tmp);
+			if (RequestData.length == 0) RequestData.length = 1;
+			if (Len(RequestData[0]) > 0) tmp = "&"$tmp;
+			RequestData[0] = RequestData[0]$tmp;
+			AddHeader("Content-Type", "application/x-www-form-urlencoded"); // make sure it's set
+		}
+		else {
+			Logf("POST data collision, data on URL left in tact", class'HttpUtil'.default.LOGWARN);
+		}
 	}
 	// start resolve
 	CurRedir = 0;
@@ -932,6 +967,8 @@ function Opened()
 		AddHeader("Cookie", Cookies.GetCookieString(sHostname, RequestLocation, now()));
 	}
 	else RemoveHeader("Cookie"); // cookies should be set via the HttpCookie class
+
+	OnSendRequestHeaders();
 	for (i = 0; i < RequestHeaders.length; i++)
 	{
 		SendData(RequestHeaders[i]);
@@ -939,6 +976,7 @@ function Opened()
 	if (((RequestMethod ~= HTTP_POST) || (RequestMethod ~= HTTP_PUT)) && (totalDataSize > 0))
 	{
 		SendData("");
+		OnRequestBody();
 		for (i = 0; i < RequestData.length; i++)
 		{
 			SendData(RequestData[i], (i == RequestData.length-1));
@@ -1127,7 +1165,10 @@ protected function ProcInput(string inline)
 			chunkedCounter = class'HttpUtil'.static.HexToDec(inline);
 			Logf("Next chunk", class'HttpUtil'.default.LOGINFO, chunkedCounter);
 		}
-		else ReturnData[ReturnData.length] = inline;
+		else {
+			if (OnResponseBody(inline))
+				ReturnData[ReturnData.length] = inline;
+		}
 	}
 }
 
@@ -1264,7 +1305,7 @@ protected function string genDigestAuthorization(string Username, string Passwor
 
 	if (qop != "")
 	{
-		cnonce = class'HttpUtil'.static.MD5String(""$frand());
+		cnonce = class'HttpUtil'.static.DecToHex(rand(MaxInt), 8);
 		result = result$"cnonce=\""$cnonce$"\", ";
 		result = result$"nc=00000001, "; // always 1st request
 		result = result$"qop=\""$qop$"\", ";

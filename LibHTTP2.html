@@ -1,19 +1,24 @@
-<h1>LibHTTP2</h1>
+<h1>LibHTTP3</h1>
 LibHTTP is a general perpose library for UnrealEngine2. It allows you to fetch files stored on webservers. <br />
-Version 2 of this library has quite some improvements:
+Features:
 <ul>
-<li>HTTP/1.1 support</li>
-<li>Cached resolves</li>
-<li>Redirection history</li>
-<li>Chuncked encoded files are automatically decoded</li>
-<li>Much more delegates</li>
-<li>Referer send on follow redirect</li>
-<li>Timeout handling</li>
+<li>Support for HTTP version 1.0 and 1.1</li>
+<li>Support for GET/POST/HEAD/TRACE request methods</li>
+<li>Normal and accelerated transfer modes (accelerated mode creates a performance hit)</li>
+<li>Response and Request Header managent</li>
+<li>Cookie management</li>
+<li>Authentication supports (both Basic and Digest methods are supported)</li>
+<li>Support for HTTP proxies</li>
+<li>Gracefull handling of connection timeouts</li>
+<li>Automatic decoding of chunked data</li>
+<li>Automatically follows redirections (creates a redirection history)</li>
+<li>Support for <code>multipart/form-data</code> POST data (prefered form)</li>
 </ul>
 
 <h2>Download</h2>
 The downloads include the binary .u file and the source. DO NOT recompile the source, use the binary, or else users can get a "modified package" error.
 <ul>
+<li>Version 3 <a href="http://ut2004.elmuerte.com/files/LibHTTP3.zip">[zip]</a> (UT2004)</li>
 <li>Version 2 <a href="http://ut2004.elmuerte.com/files/LibHTTP2.zip">[zip]</a> (UT2004)</li>
 <li>Version 2 <a href="http://ut2004.elmuerte.com/files/LibHTTP2x3.zip">[zip]</a> (UT2003)</li>
 <li>Version 1 <a href="http://www.drunksnipers.com/files/ut2003/LibHTTPv100.zip">[zip]</a> (LGPL, UT2003)</li>
@@ -70,7 +75,7 @@ the following conditions:
         - You must clearly state that it is a modification or derivate of the 
           Program
         - The original copyright notice must be kept intact
-        - The modified files must contain notices of the changed made to it
+        - The modified files must contain notices of the changes made to it
         - The Modification must be released under the same license as the Program
         - Distribution happens in compliance with section 2
 
@@ -96,7 +101,7 @@ the copyright holder.
 THIS SOFTWARE DOES NOT COME WITH A WARRANTY OF ANY KIND, UNLESS NOTED OTHERWISE 
 BY THE COPYRIGHT HOLDER OR WARRANTY PROVIDER. THE ENTIRE RISK OF THE PERFORMANCE 
 AND QUALITY OF THE PROGRAM LIES WITH YOU. SHOULD THE PROGRAM PROVE DEFECTIVE, 
-YOU WILL ASSUME ALL COSTS FOR REQUIRED OF REPAIR OR CORRECTION.
+YOU WILL ASSUME ALL COSTS FOR REQUIRED REPAIR OR CORRECTION.
 </pre>
 
 <h2>UnrealEngine2 support</h2>
@@ -105,6 +110,39 @@ If you are going to use this library on a diffirent build of the UnrealEngine2, 
 
 <h2>Documentation</h2>
 The documentation for this library can be created from the source using <a href="http://wiki.beyondunreal.com/wiki/UnCodeX" target="_blank">UnCodeX</a> but it is also available on the <a href="http://wiki.beyondunreal.com/wiki/LibHTTP" target="_blank">UnrealWiki</a>.
+
+<h2>Version history</h2>
+New in version 200:
+<ul>
+	<li> Supports HTTP 1.1</li>
+	<li> Cached resolves</li>
+	<li> Redirection history</li>
+	<li> Chuncked encoding automatically decoded</li>
+	<li> Added connection timeout</li>
+	<li> More delegates</li>
+</ul>
+
+New in version 300:
+<ul>
+	<li> bug fixes</li>
+	<li> Improved easy of use:
+		get(), post(), head()</li>
+	<li> Support for <code>multipart/form-data</code> POST data</li>
+	<li> Two different transfer modes: Normal and Fast (tries to download as much
+		data as allowed within a single tick)</li>
+	<li> Support for proxy authentication, you get the best performance by
+		setting the right user/pass in the beginning. Otherwise the code using
+		this library will have to do additional processing when the proxy
+		user and pass are not accepted.</li>
+	<li> Better support for various authentication methods</li>
+	<li> Support for digest authentication (more secure HTTP authentication). When
+		digest is used instead of basic the client has to make 2 requests. With
+		the first request the server will send information needed to construct
+		the response. Basic authentication doesn't have this issue.</li>
+	<li> Cookie storage class will automatically be created when
+		<code>bProcCookies</code> or <code>bSendCookies</code> is set to true
+		(and the cookies hasn't been set)</li>
+</ul>
 
 <h2>Copyright</h2>
 Copyright 2004, Michiel "El Muerte" Hendriks &lt;elmuerte <i>at</i> drunksnipers.com&gt;

@@ -14,7 +14,7 @@
 	Released under the Lesser Open Unreal Mod License							<br />
 	http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense				<br />
 
-	<!-- $Id: HttpUtil.uc,v 1.12 2004/09/23 20:36:47 elmuerte Exp $ -->
+	<!-- $Id: HttpUtil.uc,v 1.13 2004/09/25 10:13:04 elmuerte Exp $ -->
 *******************************************************************************/
 
 class HttpUtil extends Object;
@@ -766,6 +766,7 @@ static final function II(out int a, int b, int c, int d, int x, int s, int ac)
 	a = rotate_left (a, s) +b;
 }
 
+/** convert a decimal to hexadecimal notation */
 static final function string DecToHex(int dec, int size)
 {
 	const hex = "0123456789abcdef";
