@@ -25,7 +25,12 @@
 	* Support for multipart/form-data POST data									<br />
 	* Two different transfer modes: Normal and Fast (tries to download as much
 		data as allowed within a single tick)									<br />
-	* Support for proxy authentication											<br />
+	* Support for proxy authentication, you get the best performance by
+		setting the right user/pass in the beginning. Otherwise the code using
+		this library will have to do additional processing when the proxy
+		user and pass are not accepted.											<br />
+	* Better authorisation support												<br />
+	* Support for digest authentication (more secure HTTP authentication)		<br />
 																				<br />
 	Dcoumentation and Information:
 		http://wiki.beyondunreal.com/wiki/LibHTTP								<br />
@@ -36,7 +41,7 @@
 	Released under the Lesser Open Unreal Mod License							<br />
 	http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense				<br />
 
-	<!-- $Id: HttpSock.uc,v 1.25 2004/09/21 10:44:31 elmuerte Exp $ -->
+	<!-- $Id: HttpSock.uc,v 1.26 2004/09/22 09:32:02 elmuerte Exp $ -->
 *******************************************************************************/
 /*
 	TODO:
@@ -131,6 +136,11 @@ var(Proxy) globalconfig string sProxyHost;
 var(Proxy) globalconfig int iProxyPort;
 /** proxy authentication information */
 var(Proxy) globalconfig string sProxyUser, sProxyPass;
+/** Authentication method to use when <code>sUsername</code> is set. This will
+	automatically be set when a <code>Proxy-Authorisation</code> header is received */
+var(Proxy) EAuthMethod ProxyAuthMethod;
+/** authentication information */
+var(Proxy) array<GameInfo.KeyValuePair> ProxyAuthInfo;
 
 /**
 	Method used to download the data. <br />
@@ -328,6 +338,13 @@ delegate bool OnFollowRedirect(string NewLocation)
 	it's best not to stall this call. It's just a notification.
 */
 delegate OnRequireAuthorization(EAuthMethod method, array<GameInfo.KeyValuePair> info);
+
+/**
+	Will be called when authorization is required for the current proxy. <br />
+	This will be called directly after receiving the Proxy-Authenticate header.
+	So it's best not to stall this call. It's just a notification.
+*/
+delegate OnRequireProxyAuthorization(EAuthMethod method, array<GameInfo.KeyValuePair> info);
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -544,6 +561,7 @@ function string getHTTPversion()
 function bool IsAuthMethodSupported(EAuthMethod method)
 {
 	if (method == AM_Basic) return true;
+	else if (method == AM_Digest) return true;
 	return false;
 }
 
@@ -723,9 +741,9 @@ protected function bool OpenConnection()
 			Logf("Chaning proxy port to default (80)", class'HttpUtil'.default.LOGWARN, iProxyPort);
 			iProxyPort = 80;
 		}
-		if (sProxyUser != "")
+		if (ProxyAuthMethod != AM_Unknown)
 		{
-			AddHeader("Proxy-Authorization", genBasicAuthorization(sProxyUser, sProxyPass));
+			AddHeader("Proxy-Authorization", genAuthorization(ProxyAuthMethod, sProxyUser, sProxyPass, ProxyAuthInfo));
 		}
 		if (!CachedResolve(sProxyHost))
 		{
@@ -1030,7 +1048,11 @@ protected function ProcInput(string inline)
 		}
 		if (Left(inline, retc) ~= "www-authenticate")
 		{
-			ProccessWWWAuthenticate(Mid(inline, retc+1));
+			ProccessWWWAuthenticate(Mid(inline, retc+1), false);
+		}
+		if (Left(inline, retc) ~= "proxy-authorization")
+		{
+			ProccessWWWAuthenticate(Mid(inline, retc+1), true);
 		}
 	}
 	else {
@@ -1079,19 +1101,22 @@ function EAuthMethod StrToAuthMethod(coerce string method)
 /**
 	Process the header data send by a WWW-Authenticate header;
 */
-protected function ProccessWWWAuthenticate(string HeaderData)
+protected function ProccessWWWAuthenticate(string HeaderData, bool bProxyAuth)
 {
 	local array<string> elements;
 	local string k,v;
 	local int i;
 
 	Divide(class'HttpUtil'.static.Trim(HeaderData), " ", k, HeaderData);
-	AuthMethod = StrToAuthMethod(k);
+	if (bProxyAuth) ProxyAuthMethod = StrToAuthMethod(k);
+	else AuthMethod = StrToAuthMethod(k);
 	class'HttpUtil'.static.AdvSplit(class'HttpUtil'.static.Trim(HeaderData), ", ", elements, "\"");
-	AuthInfo.Length = 0;
+	if (bProxyAuth) ProxyAuthInfo.length = 0;
+	else AuthInfo.Length = 0;
 	if (elements.Length == 0)
 	{
-		Logf("Invalid WWW-Authenticate data", class'HttpUtil'.default.LOGERR, HeaderData);
+		if (!bProxyAuth) Logf("Invalid WWW-Authenticate data", class'HttpUtil'.default.LOGERR, HeaderData);
+		else Logf("Invalid Proxy-Authorization data", class'HttpUtil'.default.LOGERR, HeaderData);
 		return;
 	}
 	else {
@@ -1100,20 +1125,37 @@ protected function ProccessWWWAuthenticate(string HeaderData)
 		{
 			log(elements[i]);
 			Divide(elements[i], "=", k, v);
-			AuthInfo.length = AuthInfo.length+1;
-			AuthInfo[AuthInfo.length-1].Key = k;
-			AuthInfo[AuthInfo.length-1].Value = v;
+			if (bProxyAuth)
+			{
+				ProxyAuthInfo.length = ProxyAuthInfo.length+1;
+				ProxyAuthInfo[ProxyAuthInfo.length-1].Key = k;
+				ProxyAuthInfo[ProxyAuthInfo.length-1].Value = v;
+			}
+			else {
+				AuthInfo.length = AuthInfo.length+1;
+				AuthInfo[AuthInfo.length-1].Key = k;
+				AuthInfo[AuthInfo.length-1].Value = v;
+			}
 		}
 	}
-	if (!IsAuthMethodSupported(AuthMethod))
-		Logf("Unsupported WWW-Authenticate method required", class'HttpUtil'.default.LOGWARN, GetEnum(enum'EAuthMethod', AuthMethod));
-	else OnRequireAuthorization(AuthMethod, AuthInfo);
+	if (bProxyAuth)
+	{
+		if (!IsAuthMethodSupported(ProxyAuthMethod))
+			Logf("Unsupported Proxy-Authorization method required", class'HttpUtil'.default.LOGWARN, GetEnum(enum'EAuthMethod', ProxyAuthMethod));
+		else if (LastStatus == 407) OnRequireProxyAuthorization(ProxyAuthMethod, ProxyAuthInfo);
+	}
+	else {
+		if (!IsAuthMethodSupported(AuthMethod))
+			Logf("Unsupported WWW-Authenticate method required", class'HttpUtil'.default.LOGWARN, GetEnum(enum'EAuthMethod', AuthMethod));
+		else if (LastStatus == 401) OnRequireAuthorization(AuthMethod, AuthInfo);
+	}
 }
 
 /** generate the authentication data */
 protected function string genAuthorization(EAuthMethod method, string Username, string Password, array<GameInfo.KeyValuePair> Info)
 {
 	if (method == AM_Basic) return genBasicAuthorization(Username, Password);
+	else if (method == AM_Digest) return genDigestAuthorization(Username, Password, Info);
 	return "";
 }
 
@@ -1128,6 +1170,71 @@ protected function string genBasicAuthorization(string Username, string Password
 	res = class'HttpUtil'.static.Base64Encode(res, authBasicLookup);
 	Logf("Base 64 encoding", class'HttpUtil'.default.LOGINFO, Username$":"$Password, res[0]);
 	return "Basic"@res[0];
+}
+
+protected function string GetValue(string key, array<GameInfo.KeyValuePair> Info, optional string def)
+{
+	local int i;
+	for (i = 0; i < info.length; i++)
+	{
+		if (info[i].key ~= key) return info[i].value;
+	}
+	return def;
+}
+
+/** generate the Digest authorization data string */
+protected function string genDigestAuthorization(string Username, string Password, array<GameInfo.KeyValuePair> Info)
+{
+	local string a1, a2, qop, alg, cnonce;
+	local string result, tmp;
+
+	result = "Digest username=\""$Username$"\", ";
+	tmp = GetValue("realm", info);
+	if (tmp != "") Result = result$"realm=\""$GetValue("realm", Info)$"\", ";
+	tmp = GetValue("nonce", info);
+	if (tmp != "") result = result$"nonce=\""$tmp$"\", ";
+	result = result$"uri=\""$RequestLocation$"\", ";
+	tmp = GetValue("opaque", info);
+	if (tmp != "") result = result$"opaque=\""$tmp$"\", ";
+
+	qop = GetValue("qop", info); // to be used for the digest-response
+
+	if (qop != "")
+	{
+		cnonce = class'HttpUtil'.static.MD5String(""$frand());
+		result = result$"cnonce=\""$cnonce$"\", ";
+		result = result$"nc=00000001, "; // always 1st request
+	}
+
+	alg = Caps(GetValue("algorithm", info, "MD5"));
+	if (alg ~= "MD5" || alg ~= "MD5-SESS")
+	{
+		// A1
+		if (alg == "MD5") a1 = class'HttpUtil'.static.MD5String(Username$":"$GetValue("realm", info)$":"$Password);
+		else if (alg == "MD5-SESS")
+		{
+			a1 = class'HttpUtil'.static.MD5String(Username$":"$GetValue("realm", info)$":"$Password);
+			a1 = a1$":"$GetValue("nonce", info)$":"$cnonce;
+		}
+		// A2
+		if (qop == "" || qop == "AUTH") a2 = class'HttpUtil'.static.MD5String(Caps(RequestMethod)$":"$RequestLocation);
+		else if (qop ~= "AUTH-INT")
+		{
+			a2 = class'HttpUtil'.static.MD5String("?"); //TODO: hash request body
+			a2 = class'HttpUtil'.static.MD5String(Caps(RequestMethod)$":"$RequestLocation$":"$a2);
+		}
+		// KD
+		if (qop == "") tmp = class'HttpUtil'.static.MD5String(a1$":"$GetValue("nonce", info)$":"$a2);
+		else if (qop ~= "AUTH" || qop ~= "AUTH-INT")
+		{
+			tmp = class'HttpUtil'.static.MD5String(a1$":"$GetValue("nonce", info)$":00000001:"$cnonce$":"$qop$":"$a2);
+		}
+		result = result$"response=\""$tmp$"\"";
+	}
+	else {
+		Logf("Unknown digest algorithm", class'HttpUtil'.default.LOGWARN, alg);
+	}
+	return result;
 }
 
 /**

@@ -14,7 +14,7 @@ event PreBeginPlay()
 	sock.Cookies = new class'HttpCookies';
 	sock.Cookies.iVerbose = class'HttpUtil'.default.LOGINFO;
 
-	TestId = 8; //...
+	TestId = 9; //...
 	NextTest();
 }
 
@@ -59,7 +59,8 @@ function NextTest()
 		case 7: testPost3(); break;
 		case 8: testFastGet(); break;
 		case 9: testAuthBasic(); break;
-		case 10: testAuthDigest(); break;
+		case 10: testAuthDigest1(); break;
+		case 11: testAuthDigest2(); break;
 	}
 }
 
@@ -115,13 +116,19 @@ function testFastGet()
 function testAuthBasic()
 {
 	sock.sAuthUsername = "test";
-	sock.sAuthPassword = "test2";
+	sock.sAuthPassword = "test";
 	sock.get("http://el-muerte.student.utwente.nl/test/htpass/basic/");
 }
 
-function testAuthDigest()
+function testAuthDigest1()
+{
+	sock.AuthMethod = AM_Unknown;
+	sock.get("http://el-muerte.student.utwente.nl/test/htpass/digest/");
+}
+
+function testAuthDigest2()
 {
 	sock.sAuthUsername = "test";
-	sock.sAuthPassword = "test2";
+	sock.sAuthPassword = "test";
 	sock.get("http://el-muerte.student.utwente.nl/test/htpass/digest/");
 }

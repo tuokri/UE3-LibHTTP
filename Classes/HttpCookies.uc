@@ -11,7 +11,7 @@
 	Released under the Lesser Open Unreal Mod License							<br />
 	http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense				<br />
 
-	<!-- $Id: HttpCookies.uc,v 1.7 2004/09/14 11:12:48 elmuerte Exp $ -->
+	<!-- $Id: HttpCookies.uc,v 1.8 2004/09/22 09:32:02 elmuerte Exp $ -->
 *******************************************************************************/
 
 class HttpCookies extends Object config parseconfig;
@@ -37,21 +37,22 @@ var config array<HTTPCookie> CookieData;
 /** log verbosity */
 var config int iVerbose;
 
-/**
-	Clean up cookie data
-*/
 event Created()
 {
 	local int i;
+	local bool bDirty;
+	bDirty = false;
+	// remove session cookies
 	for (i = CookieData.length-1; i > 0; i--)
 	{
 		if (CookieData[i].Expires <= 0)
 		{
 			CookieData.remove(i, 1);
+			bDirty = true;
 			continue;
 		}
 	}
-	SaveConfig();
+	if (bDirty) SaveConfig();
 }
 
 /**
@@ -113,11 +114,15 @@ function string GetCookieString(string Domain, string Path, int CurrentTimeStamp
 {
 	local int i;
 	local string res;
+	local bool bDirty;
+
+	bDirty = false;
 	for (i = CookieData.Length-1; i > 0 ; i--)
 	{
 		if ((CookieData[i].Expires <= CurrentTimeStamp) && (CookieData[i].Expires > 0))
 		{
 			CookieData.remove(i, 1);
+			bDirty = true;
 			continue;
 		}
 		if (Right(Domain, Len(CookieData[i].Domain)) ~= CookieData[i].Domain) // case insensitive
@@ -129,6 +134,7 @@ function string GetCookieString(string Domain, string Path, int CurrentTimeStamp
 			}
 		}
 	}
+	if (bDirty) SaveConfig();
 	return res;
 }
 
