@@ -16,13 +16,15 @@
 	* Cached resolves
 	* Redirection history
 	* Chuncked encoding automatically decoded
+	* Added connection timeout
+	* More delegates
 
 	Dcoumentation and Information:
 		http://wiki.beyondunreal.com/wiki/LibHTTP
 
 	Authors:	Michiel 'El Muerte' Hendriks <elmuerte@drunksnipers.com>
 
-	<!-- $Id: HttpSock.uc,v 1.14 2004/03/14 17:37:31 elmuerte Exp $ -->
+	<!-- $Id: HttpSock.uc,v 1.15 2004/03/15 22:29:00 elmuerte Exp $ -->
 *******************************************************************************/
 
 class HttpSock extends TcpLink config;
@@ -62,6 +64,8 @@ var(Options) config int iMaxRedir;
 var(Options) config bool bSendCookies;
 /** Process incoming cookies, defaults to false */
 var(Options) config bool bProcCookies;
+/** connection timeout */
+var(Options) config float fConnectTimout;
 
 /** Use a proxy server */
 var(Proxy) config bool bUseProxy;
@@ -106,7 +110,9 @@ var protected string inBuffer, outBuffer;
 var protected bool procHeader;
 
 /** @ingore */
-var IpAddr LocalLink;
+var protected IpAddr LocalLink;
+/** the port we are connected to */
+var protected int BoundPort;
 
 /** @ingore */
 var protected bool FollowingRedir, RedirTrap;
@@ -123,11 +129,14 @@ var protected int TZoffset;
 var protected int chunkedCounter; // to count the current chunk
 /** @ignore */
 var protected bool bIsChunked; // if Transfer-Encoding: chunked
+/** @ignore */
+var protected bool bTimeout;
 
 enum HTTPState
 {
 		HTTPState_Resolving,
 		HTTPState_Connecting,
+		HTTPState_SendingRequest,
 		HTTPState_ReceivingData,
 		HTTPState_Closed,
 };
@@ -166,6 +175,12 @@ delegate bool OnResolved()
 {
 	return true;
 }
+
+/** called when the resolved failed, hostname is the hostname that could not be resolved */
+delegate OnResolveFailed(string hostname);
+
+/** called when the connection has timed out (e.g. open() failed after a set time) */
+delegate OnConnectionTimeout();
 
 /**
 	will be called when the operation was complete
@@ -234,7 +249,6 @@ function bool HttpRequest(string location, optional string Method, optional HTTP
 		AddHeader("Content-Type", "application/x-www-form-urlencoded");
 	}
 	// start resolve
-	curState = HTTPState_Resolving;
 	CurRedir = 0;
 	if (CookieData != none) Cookies = CookieData;
 	CRLF = Chr(13)$Chr(10);
@@ -450,6 +464,7 @@ protected function bool OpenConnection()
 		}
 		if (!CachedResolve(sProxyHost))
 		{
+			curState = HTTPState_Resolving;
 			ResolveHostname = sProxyHost;
 			Resolve(sProxyHost);
 		}
@@ -457,6 +472,7 @@ protected function bool OpenConnection()
 	else {
 		if (!CachedResolve(sHostname))
 		{
+			curState = HTTPState_Resolving;
 			ResolveHostname = sHostname;
 			Resolve(sHostname);
 		}
@@ -491,6 +507,7 @@ event Resolved( IpAddr Addr )
 protected function InternalResolved( IpAddr Addr , optional bool bDontCache)
 {
 	local int i;
+	Logf("Host resolved succesfully", class'HttpUtil'.default.LOGINFO, ResolveHostname);
 	if (!bDontCache)
 	{
 		ResolveCache.Length = ResolveCache.Length+1;
@@ -506,17 +523,24 @@ protected function InternalResolved( IpAddr Addr , optional bool bDontCache)
 		curState = HTTPState_Closed;
 		return;
 	}
-	if (iLocalPort > 0)
+	if (BoundPort == 0)
 	{
-		i = BindPort(iLocalPort, true);
-		if (i != iLocalPort) Logf("Could not bind preference port", class'HttpUtil'.default.LOGWARN, iLocalPort);
+		if (iLocalPort > 0)
+		{
+			BoundPort = BindPort(iLocalPort, true);
+			if (i != iLocalPort) Logf("Could not bind preference port", class'HttpUtil'.default.LOGWARN, iLocalPort);
+		}
+		else BoundPort = BindPort();
 	}
-	else BindPort();
+	Logf("Local port succesfully bound", class'HttpUtil'.default.LOGINFO, BoundPort);
 	LinkMode = MODE_Text;
 	ReceiveMode = RMODE_Event;
 
 	OnPreConnect();
 	curState = HTTPState_Connecting;
+	bTimeout = false;
+	SetTimer(fConnectTimout, false);
+	Logf("Opening connection", class'HttpUtil'.default.LOGINFO);
 	if (!Open(LocalLink))
 	{
 		Logf("Open() failed", class'HttpUtil'.default.LOGERR);
@@ -526,14 +550,29 @@ protected function InternalResolved( IpAddr Addr , optional bool bDontCache)
 
 event ResolveFailed()
 {
-	Logf("Resolve failed", class'HttpUtil'.default.LOGERR, sHostname);
 	curState = HTTPState_Closed;
+	Logf("Resolve failed", class'HttpUtil'.default.LOGERR, ResolveHostname);
+	OnResolveFailed(ResolveHostname);
+}
+
+function Timer()
+{
+	if (curState == HTTPState_Connecting)
+	{
+		bTimeout = true;
+		LinkState = STATE_Initialized;
+		Logf("Connection timeout", class'HttpUtil'.default.LOGERR, fConnectTimout);
+		if (IsConnected()) Close();
+		curState = HTTPState_Closed;
+		OnConnectionTimeout();
+	}
 }
 
 event Opened()
 {
 	local int i;
 	Logf("Connection established", class'HttpUtil'.default.LOGINFO);
+	curState = HTTPState_SendingRequest;
 	inBuffer = ""; // clear buffer
 	outBuffer = ""; // clear buffer
 	if (bUseProxy) SendData(RequestMethod@"http://"$sHostname$":"$string(iPort)$RequestLocation@"HTTP/"$HTTPVER);
@@ -578,7 +617,7 @@ event Closed()
 	{
 		Logf("Connection closed", class'HttpUtil'.default.LOGINFO);
 		curState = HTTPState_Closed;
-		OnComplete();
+		if (!bTimeout) OnComplete();
 	}
 	else {
 		if (!OnFollowRedirect()) return;
@@ -746,4 +785,5 @@ defaultproperties
 	bSendCookies=true
 	bProcCookies=false
 	bUseProxy=false
+	fConnectTimout=60
 }
