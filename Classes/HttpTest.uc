@@ -5,7 +5,7 @@
 	Released under the Lesser Open Unreal Mod License							<br />
 	http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense				<br />
 
-	<!-- $Id: HttpTest.uc,v 1.5 2004/09/25 15:37:41 elmuerte Exp $ -->
+	<!-- $Id: HttpTest.uc,v 1.6 2004/09/26 07:57:33 elmuerte Exp $ -->
 *******************************************************************************/
 class HttpTest extends Info;
 
@@ -129,7 +129,7 @@ function RunTest()
 }
 
 /** will be called when the download is complete, dump the data to a file */
-function DownloadComplete()
+function DownloadComplete(HttpSock Sender)
 {
 	local FileLog f;
 	local int i;
@@ -223,13 +223,13 @@ function testAuth()
 }
 
 /** will be called when authentication is required */
-function AuthRequired(HttpSock.EAuthMethod method, array<GameInfo.KeyValuePair> info)
+function AuthRequired(HttpSock Sender, HttpSock.EAuthMethod method, array<GameInfo.KeyValuePair> info)
 {
 	sock.OnComplete = AuthRetry;
 }
 
 /** retry when authentication failed */
-function AuthRetry()
+function AuthRetry(HttpSock Sender)
 {
 	sock.OnComplete = DownloadComplete;
 	TestIteration--;

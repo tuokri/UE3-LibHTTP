@@ -39,6 +39,9 @@
 		<code>bProcCookies</code> or <code>bSendCookies</code> is set to true
 		(and the cookies hasn't been set)										<br />
 																				<br />
+	New in version 350:															<br />
+	* All delegates contains a HttpSock Sender argument
+																				<br />
 	Dcoumentation and Information:
 		http://wiki.beyondunreal.com/wiki/LibHTTP								<br />
 																				<br />
@@ -48,13 +51,13 @@
 	Released under the Lesser Open Unreal Mod License							<br />
 	http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense				<br />
 
-	<!-- $Id: HttpSock.uc,v 1.30 2004/09/25 15:37:41 elmuerte Exp $ -->
+	<!-- $Id: HttpSock.uc,v 1.31 2004/09/26 07:57:33 elmuerte Exp $ -->
 *******************************************************************************/
 
 class HttpSock extends Info config;
 
 /** LibHTTP version number */
-const VERSION = 300;
+const VERSION = 350;
 
 /** the output buffer size */
 const BUFFERSIZE = 2048;
@@ -295,45 +298,45 @@ var protected array<string> PendingCookieData;
 	Will be called when the return code has been received; This is the first
 	function called after the request has been send.
 */
-delegate OnReturnCode(int ReturnCode, string ReturnMessage, string HttpVer);
+delegate OnReturnCode(HttpSock Sender, int ReturnCode, string ReturnMessage, string HttpVer);
 
 /**
 	Will be called in case of an internal error.
 */
-delegate OnError(string ErrorMessage, optional string Param1, optional string Param2);
+delegate OnError(HttpSock Sender, string ErrorMessage, optional string Param1, optional string Param2);
 
 /**
 	Will be called when the host name is resolved. <br />
 	Return true to continue, or false to abort.
 */
-delegate bool OnResolved(string hostname, InternetLink.IpAddr Addr)
+delegate bool OnResolved(HttpSock Sender, string hostname, InternetLink.IpAddr Addr)
 {
 	return true;
 }
 
 /** Called when the resolved failed, hostname is the hostname that could not be resolved */
-delegate OnResolveFailed(string hostname);
+delegate OnResolveFailed(HttpSock Sender, string hostname);
 
 /**
 	called when the connection has timed out (e.g. open() failed after a set time)
 */
-delegate OnConnectionTimeout();
+delegate OnConnectionTimeout(HttpSock Sender);
 
 /**
 	Will be called when the operation was completed successfully. <br />
 	It won't be called when an time out occured.
 */
-delegate OnComplete();
+delegate OnComplete(HttpSock Sender);
 
 /**
 	Called before the connection is established.
 */
-delegate OnPreConnect();
+delegate OnPreConnect(HttpSock Sender);
 
 /**
 	Called when Open() fails
 */
-delegate OnConnectError();
+delegate OnConnectError(HttpSock Sender);
 
 /**
 	This delegate will be send right before the headers are send to the
@@ -342,7 +345,7 @@ delegate OnConnectError();
 	that are important for this request (like authentication or request body
 	headers)
 */
-delegate OnSendRequestHeaders();
+delegate OnSendRequestHeaders(HttpSock Sender);
 
 /**
 	Will be called when the request body has to be send. Do note that you are
@@ -350,7 +353,7 @@ delegate OnSendRequestHeaders();
 	the content being send. If you use this delegate to send the request body
 	manually you will have to set the Content-Length header yourself.
 */
-delegate OnRequestBody();
+delegate OnRequestBody(HttpSock Sender);
 
 /**
 	Will be called for every response line received (only the body). Return
@@ -358,7 +361,7 @@ delegate OnRequestBody();
 	delegate if you need to have life updates of the content and can not wait
 	until the request is complete.
 */
-delegate bool OnResponseBody(string line)
+delegate bool OnResponseBody(HttpSock Sender, string line)
 {
 	return true;
 }
@@ -367,7 +370,7 @@ delegate bool OnResponseBody(string line)
 	Called before the redirection is followed, return false to prevernt following
 	the	redirection
 */
-delegate bool OnFollowRedirect(string NewLocation)
+delegate bool OnFollowRedirect(HttpSock Sender, string NewLocation)
 {
 	return true;
 }
@@ -377,14 +380,14 @@ delegate bool OnFollowRedirect(string NewLocation)
 	This will be called directly after receiving the WWW-Authenticate header. So
 	it's best not to stall this call. It's just a notification.
 */
-delegate OnRequireAuthorization(EAuthMethod method, array<GameInfo.KeyValuePair> info);
+delegate OnRequireAuthorization(HttpSock Sender, EAuthMethod method, array<GameInfo.KeyValuePair> info);
 
 /**
 	Will be called when authorization is required for the current proxy. <br />
 	This will be called directly after receiving the Proxy-Authenticate header.
 	So it's best not to stall this call. It's just a notification.
 */
-delegate OnRequireProxyAuthorization(EAuthMethod method, array<GameInfo.KeyValuePair> info);
+delegate OnRequireProxyAuthorization(HttpSock Sender, EAuthMethod method, array<GameInfo.KeyValuePair> info);
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -724,7 +727,7 @@ protected function bool HttpRequest(string location, string Method)
 /** manage logging */
 function Logf(coerce string message, optional int level, optional coerce string Param1, optional coerce string Param2)
 {
-	if (level == class'HttpUtil'.default.LOGERR) OnError(Message, Param1, Param2);
+	if (level == class'HttpUtil'.default.LOGERR) OnError(self, Message, Param1, Param2);
 	if (level <= iVerbose) class'HttpUtil'.static.Logf(Name, Message, Level, Param1, Param2);
 }
 
@@ -876,7 +879,7 @@ function InternalResolved( InternetLink.IpAddr Addr , optional bool bDontCache)
 	LocalLink.Addr = Addr.Addr;
 	if (bUseProxy) LocalLink.Port = iProxyPort;
 		else LocalLink.Port = iPort;
-	if (!OnResolved(ResolveHostname, Addr))
+	if (!OnResolved(self, ResolveHostname, Addr))
 	{
 		Logf("Request aborted", class'HttpUtil'.default.LOGWARN, "OnResolved() == false");
 		curState = HTTPState_Closed;
@@ -905,7 +908,7 @@ function InternalResolved( InternetLink.IpAddr Addr , optional bool bDontCache)
 	}
 	else HttpLink.ReceiveMode = RMODE_Event;
 
-	OnPreConnect();
+	OnPreConnect(self);
 	curState = HTTPState_Connecting;
 	bTimeout = false;
 	SetTimer(fConnectTimout, false);
@@ -914,7 +917,7 @@ function InternalResolved( InternetLink.IpAddr Addr , optional bool bDontCache)
 	{
 		Logf("Open() failed", class'HttpUtil'.default.LOGERR, HttpLink.GetLastError());
 		curState = HTTPState_Closed;
-		OnConnectError();
+		OnConnectError(self);
 	}
 }
 
@@ -923,7 +926,7 @@ function ResolveFailed()
 {
 	curState = HTTPState_Closed;
 	Logf("Resolve failed", class'HttpUtil'.default.LOGERR, ResolveHostname);
-	OnResolveFailed(ResolveHostname);
+	OnResolveFailed(self, ResolveHostname);
 }
 
 /** timer is used for the conenection timeout. */
@@ -935,7 +938,7 @@ function Timer()
 		Logf("Connection timeout", class'HttpUtil'.default.LOGERR, fConnectTimout);
 		CloseSocket();
 		curState = HTTPState_Closed;
-		OnConnectionTimeout();
+		OnConnectionTimeout(self);
 	}
 }
 
@@ -968,7 +971,7 @@ function Opened()
 	}
 	else RemoveHeader("Cookie"); // cookies should be set via the HttpCookie class
 
-	OnSendRequestHeaders();
+	OnSendRequestHeaders(self);
 	for (i = 0; i < RequestHeaders.length; i++)
 	{
 		SendData(RequestHeaders[i]);
@@ -976,7 +979,7 @@ function Opened()
 	if (((RequestMethod ~= HTTP_POST) || (RequestMethod ~= HTTP_PUT)) && (totalDataSize > 0))
 	{
 		SendData("");
-		OnRequestBody();
+		OnRequestBody(self);
 		for (i = 0; i < RequestData.length; i++)
 		{
 			SendData(RequestData[i], (i == RequestData.length-1));
@@ -1007,14 +1010,14 @@ function Closed()
 		if (!bTimeout)
 		{
 			RequestDuration = Level.TimeSeconds-StartRequestTime;
-			OnComplete();
+			OnComplete(self);
 		}
 	}
 	else {
 		CurRedir++;
 		if (iMaxRedir >= CurRedir) Logf("MaxRedir reached", class'HttpUtil'.default.LOGWARN, iMaxRedir, CurRedir);
 		i = RequestHistory.Length-1;
-		if (!OnFollowRedirect("http://"$sHostname$RequestLocation)) return;
+		if (!OnFollowRedirect(self, "http://"$sHostname$RequestLocation)) return;
 		AddHeader("Host", sHostname); // make sure the new host is set
 		AddHeader("Referer", "http://"$RequestHistory[i].Hostname$RequestHistory[i].Location);
 		OpenConnection();
@@ -1105,7 +1108,7 @@ protected function ProcInput(string inline)
 			}
 			RequestHistory[RequestHistory.Length-1].HTTPresponse = retc;
 					  // code  description  http/1.0
-			OnReturnCode(retc, tmp2[2], tmp2[0]);
+			OnReturnCode(self, retc, tmp2[2], tmp2[0]);
 			LastStatus = retc;
 		}
 		ReturnHeaders[ReturnHeaders.length] = inline;
@@ -1166,7 +1169,7 @@ protected function ProcInput(string inline)
 			Logf("Next chunk", class'HttpUtil'.default.LOGINFO, chunkedCounter);
 		}
 		else {
-			if (OnResponseBody(inline))
+			if (OnResponseBody(self, inline))
 				ReturnData[ReturnData.length] = inline;
 		}
 	}
@@ -1240,12 +1243,12 @@ protected function ProccessWWWAuthenticate(string HeaderData, bool bProxyAuth)
 	{
 		if (!IsAuthMethodSupported(ProxyAuthMethod))
 			Logf("Unsupported Proxy-Authorization method required", class'HttpUtil'.default.LOGWARN, GetEnum(enum'EAuthMethod', ProxyAuthMethod));
-		else if (LastStatus == 407) OnRequireProxyAuthorization(ProxyAuthMethod, ProxyAuthInfo);
+		else if (LastStatus == 407) OnRequireProxyAuthorization(self, ProxyAuthMethod, ProxyAuthInfo);
 	}
 	else {
 		if (!IsAuthMethodSupported(AuthMethod))
 			Logf("Unsupported WWW-Authenticate method required", class'HttpUtil'.default.LOGWARN, GetEnum(enum'EAuthMethod', AuthMethod));
-		else if (LastStatus == 401) OnRequireAuthorization(AuthMethod, AuthInfo);
+		else if (LastStatus == 401) OnRequireAuthorization(self, AuthMethod, AuthInfo);
 	}
 }
 
