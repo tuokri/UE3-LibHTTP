@@ -11,9 +11,12 @@
 	* Cookie management
 	* Support for HTTP Proxy
 
+	Dcoumentation and Information:
+		http://wiki.beyondunreal.com/wiki/LibHTTP
+
 	Authors:	Michiel 'El Muerte' Hendriks <elmuerte@drunksnipers.com>
 
-	$Id: HttpSock.uc,v 1.8 2003/07/30 14:37:03 elmuerte Exp $
+	$Id: HttpSock.uc,v 1.9 2003/07/30 19:39:34 elmuerte Exp $
 */
 
 class HttpSock extends TcpLink config;

@@ -2,9 +2,12 @@
 	HttpUtil
 	Static functions. Part of [[LibHTTP]].
 
+	Dcoumentation and Information:
+		http://wiki.beyondunreal.com/wiki/LibHTTP
+
 	Authors:	Michiel 'El Muerte' Hendriks <elmuerte@drunksnipers.com>
 
-	$Id: HttpUtil.uc,v 1.4 2003/07/30 19:26:23 elmuerte Exp $
+	$Id: HttpUtil.uc,v 1.5 2003/07/30 19:39:34 elmuerte Exp $
 */
 
 class HttpUtil extends Object;

@@ -2,9 +2,12 @@
 	HttpCookies
 	Cookie management system. Part of [[LibHTTP]].
 
+	Dcoumentation and Information:
+		http://wiki.beyondunreal.com/wiki/LibHTTP
+
 	Authors:	Michiel 'El Muerte' Hendriks <elmuerte@drunksnipers.com>
 
-	$Id: HttpCookies.uc,v 1.3 2003/07/30 12:52:53 elmuerte Exp $
+	$Id: HttpCookies.uc,v 1.4 2003/07/30 19:39:34 elmuerte Exp $
 */
 
 class HttpCookies extends Object config;

@@ -5,9 +5,12 @@
 	''Note:'' the HTML special chars are NOT fixed, you have to do this yourself
 	''Note:'' Don't pound the webserver with requests, cache your results
 
+	Dcoumentation and Information:
+		http://wiki.beyondunreal.com/wiki/LibHTTP
+
 	Authors:	Michiel 'El Muerte' Hendriks <elmuerte@drunksnipers.com>
 
-	$Id: NewsFeed.uc,v 1.2 2003/07/30 19:37:39 elmuerte Exp $
+	$Id: NewsFeed.uc,v 1.3 2003/07/30 19:39:34 elmuerte Exp $
 */
 
 class NewsFeed extends Object;
