@@ -1,5 +1,11 @@
 /*******************************************************************************
-	Test Package for LibHTTP
+	Test Package for LibHTTP													<br />
+																				<br />
+	Copyright 2003, 2004 Michiel "El Muerte" Hendriks							<br />
+	Released under the Lesser Open Unreal Mod License							<br />
+	http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense				<br />
+
+	<!-- $Id: HttpTest.uc,v 1.4 2004/09/24 07:57:55 elmuerte Exp $ -->
 *******************************************************************************/
 class HttpTest extends Info;
 
@@ -10,11 +16,13 @@ enum EHttpTests
 	HT_HEAD,
 	HT_POST,
 	HT_AUTH,
+	HT_FASTGET,
+	HT_TRACE,
 };
 var config array<EHttpTests> Tests;
 
 /** urls used for testing */
-var config array<string> GetUrls, HeadUrls;
+var config array<string> GetUrls, HeadUrls, FastUrls;
 
 /** POST test data */
 struct PostDataEntry
@@ -50,11 +58,12 @@ var HttpSock sock;
 event PostBeginPlay()
 {
 	sock = spawn(class'HttpSock');
-	sock.iVerbose = class'HttpUtil'.default.LOGDATA;
+	sock.iVerbose = class'HttpUtil'.default.LOGDATA; // set the verbosity very high to see what happens (for debugging)
 	sock.OnComplete = DownloadComplete;
 	sock.Cookies = new class'HttpCookies';
-	sock.Cookies.iVerbose = class'HttpUtil'.default.LOGINFO;
-	TestId = 0; // so the first test would be #0
+	sock.Cookies.iVerbose = class'HttpUtil'.default.LOGINFO; // for debugging
+
+	TestId = 0;
 	TestIteration = 0;
 	RunTest();
 }
@@ -89,9 +98,16 @@ function RunTest()
 		case HT_AUTH:
 			testAuth();
 			break;
+		case HT_FASTGET:
+			testFastGet();
+			break;
+		case HT_TRACE:
+			testTrace();
+			break;
 	}
 }
 
+/** will be called when the download is complete, dump the data to a file */
 function DownloadComplete()
 {
 	local FileLog f;
@@ -141,7 +157,7 @@ function testGet()
 	sock.get(GetUrls[TestIteration++]);
 }
 
-/** normal get request tests */
+/** normal head request tests */
 function testHead()
 {
 	if (TestIteration >= HeadUrls.Length)
@@ -152,7 +168,7 @@ function testHead()
 	sock.head(HeadUrls[TestIteration++]);
 }
 
-/** normal get request tests */
+/** normal post request tests */
 function testPost()
 {
 	local int i;
@@ -170,7 +186,7 @@ function testPost()
 	TestIteration++;
 }
 
-/** normal get request tests */
+/** basic and digest auth tests */
 function testAuth()
 {
 	if (TestIteration >= AuthUrls.Length)
@@ -185,16 +201,41 @@ function testAuth()
 	TestIteration++;
 }
 
+/** will be called when authentication is required */
 function AuthRequired(HttpSock.EAuthMethod method, array<GameInfo.KeyValuePair> info)
 {
 	sock.OnComplete = AuthRetry;
 }
 
+/** retry when authentication failed */
 function AuthRetry()
 {
 	sock.OnComplete = DownloadComplete;
 	TestIteration--;
 	testAuth();
+}
+
+/** fast get request tests */
+function testFastGet()
+{
+	if (TestIteration >= GetUrls.Length)
+	{
+		NextTest();
+		return;
+	}
+	sock.TransferMode = TM_Fast;
+	sock.get(FastUrls[TestIteration++]);
+}
+
+/** fast get request tests */
+function testTrace()
+{
+	if (TestIteration >= GetUrls.Length)
+	{
+		NextTest();
+		return;
+	}
+	sock.httrace(FastUrls[TestIteration++]);
 }
 
 defaultproperties
@@ -218,8 +259,15 @@ defaultproperties
 	AuthUrls[2]=(url="http://el-muerte.student.utwente.nl/test/htpass/digest/",username="test",password="test")
 	AuthUrls[3]=(url="http://el-muerte.student.utwente.nl/test/htpass/digest2/",username="test",password="test")
 
+	FastUrls[0]="http://www.google.com" // set's cookie, and mostliky redirect
+	FastUrls[1]="http://el-muerte.student.utwente.nl/test/__php_info.php"
+	FastUrls[2]="http://r.elmuerte.com" // redirect
+	FastUrls[3]="http://el-muerte.student.utwente.nl/test/__php_info.php?some=var&and=another+item&last=one%20the%20end"
+
 	Tests[0]=HT_GET
 	Tests[1]=HT_HEAD
 	Tests[2]=HT_POST
 	Tests[3]=HT_AUTH
+	Tests[4]=HT_FASTGET
+	Tests[5]=HT_TRACE
 }

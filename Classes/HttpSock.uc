@@ -11,7 +11,7 @@
 	* Cookie management															<br />
 	* Support for HTTP Proxy													<br />
 																				<br />
-	new in version 200:															<br />
+	New in version 200:															<br />
 	* Supports HTTP 1.1															<br />
 	* Cached resolves															<br />
 	* Redirection history														<br />
@@ -19,10 +19,11 @@
 	* Added connection timeout													<br />
 	* More delegates															<br />
 																				<br />
-	new in version 300:															<br />
+	New in version 300:															<br />
+	* bug fixes																	<br />
 	* Improved easy of use:
 		get(), post(), head()													<br />
-	* Support for multipart/form-data POST data									<br />
+	* Support for <code>multipart/form-data</code> POST data					<br />
 	* Two different transfer modes: Normal and Fast (tries to download as much
 		data as allowed within a single tick)									<br />
 	* Support for proxy authentication, you get the best performance by
@@ -34,6 +35,9 @@
 		digest is used instead of basic the client has to make 2 requests. With
 		the first request the server will send information needed to construct
 		the response. Basic authentication doesn't have this issue.				<br />
+	* Cookie storage class will automatically be created when
+		<code>bProcCookies</code> or <code>bSendCookies</code> is set to true
+		(and the cookies hasn't been set)										<br />
 																				<br />
 	Dcoumentation and Information:
 		http://wiki.beyondunreal.com/wiki/LibHTTP								<br />
@@ -44,12 +48,9 @@
 	Released under the Lesser Open Unreal Mod License							<br />
 	http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense				<br />
 
-	<!-- $Id: HttpSock.uc,v 1.27 2004/09/23 20:36:47 elmuerte Exp $ -->
+	<!-- $Id: HttpSock.uc,v 1.28 2004/09/24 07:57:55 elmuerte Exp $ -->
 *******************************************************************************/
-/*
-	TODO:
-	- add changed since
-*/
+
 class HttpSock extends Info config;
 
 /** LibHTTP version number */
@@ -191,6 +192,8 @@ var array<string> ReturnData;
 /** The last returned HTTP status code */
 var int LastStatus;
 
+/** Cookie class to use (if it has not been set) */
+var class<HttpCookies> HttpCookieClass;
 /** the cookie data instance */
 var HTTPCookies Cookies;
 
@@ -473,6 +476,15 @@ function bool head(string location)
 }
 
 /**
+	perform a HTTP TRACE request. This will simply cause the webserver to return
+	the request it received. It's only usefull for debugging.
+*/
+function bool httrace(string location)
+{
+	return HttpRequest(location, HTTP_TRACE);
+}
+
+/**
 	Add a header, case insensitive.	Set bNoReplace to false to not overwrite the old header.
 	Returns true when the header has been set.
 */
@@ -668,6 +680,10 @@ protected function bool HttpRequest(string location, string Method)
 	// start resolve
 	CurRedir = 0;
 	CRLF = Chr(13)$Chr(10);
+	if (bProcCookies || bSendCookies)
+	{
+		if (Cookies == none) Cookies = new HttpCookieClass;
+	}
 	return OpenConnection();
 }
 
@@ -706,6 +722,7 @@ protected function bool IsSupportedMethod()
 	if (RequestMethod ~= HTTP_GET) return true;
 	else if (RequestMethod ~= HTTP_HEAD) return true;
 	else if (RequestMethod ~= HTTP_POST) return true;
+	else if (RequestMethod ~= HTTP_TRACE) return true;
 	return false;
 }
 
@@ -960,6 +977,7 @@ function Closed()
 		if (iMaxRedir >= CurRedir) Logf("MaxRedir reached", class'HttpUtil'.default.LOGWARN, iMaxRedir, CurRedir);
 		i = RequestHistory.Length-1;
 		if (!OnFollowRedirect("http://"$sHostname$RequestLocation)) return;
+		AddHeader("Host", sHostname); // make sure the new host is set
 		AddHeader("Referer", "http://"$RequestHistory[i].Hostname$RequestHistory[i].Location);
 		OpenConnection();
 	}
@@ -1009,6 +1027,14 @@ function ReceivedText( string Line )
 	if (tmp.length > 0) inBuffer = tmp[tmp.length-1];
 }
 
+protected function bool ShouldFollowRedirect(int retc, string method)
+{
+	if (!bFollowRedirect) return false;
+	if ((method == HTTP_HEAD) || (method == HTTP_TRACE)) return false;
+	if (iMaxRedir < CurRedir) return false;
+	return ((retc >= 300) && (retc < 400)) || (retc == 201);
+}
+
 /**
 	Process the input
 */
@@ -1033,7 +1059,7 @@ protected function ProcInput(string inline)
 		{
 			Split(inline, " ", tmp2);
 			retc = int(tmp2[1]);
-			if (bFollowRedirect && ((retc == 301) || (retc == 302)) && (iMaxRedir > CurRedir))
+			if (ShouldFollowRedirect(retc, RequestMethod))
 			{
 				Logf("Redirecting", class'HttpUtil'.default.LOGINFO, retc);
 				FollowingRedir = true;
@@ -1050,7 +1076,7 @@ protected function ProcInput(string inline)
 		retc = InStr(inline, ":");
 		if (FollowingRedir)
 		{
-			if (Left(inline, retc) ~= "location" && RequestMethod != HTTP_HEAD) // don't redirect on HEAD
+			if (Left(inline, retc) ~= "location") // don't redirect on HEAD
 			{
 				Logf("Redirect Location", class'HttpUtil'.default.LOGINFO, inline);
 				RequestLocation = class'HttpUtil'.static.Trim(Mid(inline, retc+1));
@@ -1059,9 +1085,7 @@ protected function ProcInput(string inline)
 					Logf("Changing request method to GET for redirection", class'HttpUtil'.default.LOGWARN, RequestMethod);
 					RequestMethod = HTTP_GET;
 				}
-				//TODO: perform more checks
 				if (Left(RequestLocation, 4) ~= "http") ParseRequestUrl(RequestLocation, RequestMethod);
-				AddHeader("Host", sHostname); // make sure the new host is set
 				RedirTrap = true;
 			}
 		}
@@ -1299,6 +1323,7 @@ defaultproperties
 	bUseProxy=false
 	fConnectTimout=60
 	HttpLinkClass=class'HttpLink'
+	HttpCookieClass=class'HttpCookies'
 	TransferMode=TM_Normal
 	iMaxIterationsPerTick=32
 	iMaxBytesPerTick=4096
