@@ -25,6 +25,7 @@
 	* Support for multipart/form-data POST data									<br />
 	* Two different transfer modes: Normal and Fast (tries to download as much
 		data as allowed within a single tick)									<br />
+	* Support for proxy authentication											<br />
 																				<br />
 	Dcoumentation and Information:
 		http://wiki.beyondunreal.com/wiki/LibHTTP								<br />
@@ -35,7 +36,7 @@
 	Released under the Lesser Open Unreal Mod License							<br />
 	http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense				<br />
 
-	<!-- $Id: HttpSock.uc,v 1.23 2004/09/19 11:17:42 elmuerte Exp $ -->
+	<!-- $Id: HttpSock.uc,v 1.24 2004/09/20 06:10:08 elmuerte Exp $ -->
 *******************************************************************************/
 /*
 	TODO:
@@ -112,6 +113,8 @@ var(Proxy) globalconfig bool bUseProxy;
 var(Proxy) globalconfig string sProxyHost;
 /** The proxy port */
 var(Proxy) globalconfig int iProxyPort;
+/** proxy authentication information */
+var(Proxy) globalconfig string sProxyUser, sProxyPass;
 
 /**
 	Method used to download the data. <br />
@@ -510,6 +513,21 @@ function string getHTTPversion()
 	return HTTPVER;
 }
 
+/** return if the authentication method is supported */
+//TODO: test this
+//TODO: add to response parsing
+function bool IsAuthMethodSupported(optional string HeaderLine)
+{
+	local string tmp;
+	if (HeaderLine == "") HeaderLine = GetReturnHeader("WWW-Authenticate", "");
+	if (InStr(HeaderLine, ":") > -1) HeaderLine = Mid(HeaderLine, InStr(HeaderLine, ":")+1);
+	Divide(HeaderLine, ";", HeaderLine, tmp);
+	HeaderLine = Trim(HeaderLine);
+	if (HeaderLine == "") return true;
+	if (HeaderLine ~= "basic") return true;
+	return false;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 //
 //   Internal functions
@@ -680,6 +698,10 @@ protected function bool OpenConnection()
 		{
 			Logf("Chaning proxy port to default (80)", class'HttpUtil'.default.LOGWARN, iProxyPort);
 			iProxyPort = 80;
+		}
+		if (sProxyUser != "")
+		{
+			AddHeader("Proxy-Authorization", genBasicAuthorization(sProxyUser, sProxyPass));
 		}
 		if (!CachedResolve(sProxyHost))
 		{
