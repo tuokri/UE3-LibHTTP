@@ -1,30 +1,34 @@
 /*******************************************************************************
-	HttpSock
+	HttpSock																	<br />
 	Base of [[LibHTTP]] this implements the main network methods for connecting
-	to a webserver and retreiving data from it. Binary data is not supported.
-
-	Features:
-	* GET/POST support
-	* Supports transparent redirecting
-	* Basic Authentication support
-	* Header management
-	* Cookie management
-	* Support for HTTP Proxy
-
-	new in version 200:
-	* Supports HTTP 1.1
-	* Cached resolves
-	* Redirection history
-	* Chuncked encoding automatically decoded
-	* Added connection timeout
-	* More delegates
-
+	to a webserver and retreiving data from it. Binary data is not supported.	<br />
+																				<br />
+	Features:																	<br />
+	* GET/POST support															<br />
+	* Supports transparent redirecting											<br />
+	* Basic Authentication support												<br />
+	* Header management															<br />
+	* Cookie management															<br />
+	* Support for HTTP Proxy													<br />
+																				<br />
+	new in version 200:															<br />
+	* Supports HTTP 1.1															<br />
+	* Cached resolves															<br />
+	* Redirection history														<br />
+	* Chuncked encoding automatically decoded									<br />
+	* Added connection timeout													<br />
+	* More delegates															<br />
+																				<br />
 	Dcoumentation and Information:
-		http://wiki.beyondunreal.com/wiki/LibHTTP
+		http://wiki.beyondunreal.com/wiki/LibHTTP								<br />
+																				<br />
+	Authors:	Michiel 'El Muerte' Hendriks &lt;elmuerte@drunksnipers.com&gt;	<br />
+																				<br />
+	Copyright 2003, 2004 Michiel "El Muerte" Hendriks							<br />
+	Released under the Lesser Open Unreal Mod License							<br />
+	http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense				<br />
 
-	Authors:	Michiel 'El Muerte' Hendriks <elmuerte@drunksnipers.com>
-
-	<!-- $Id: HttpSock.uc,v 1.15 2004/03/15 22:29:00 elmuerte Exp $ -->
+	<!-- $Id: HttpSock.uc,v 1.16 2004/03/17 00:17:09 elmuerte Exp $ -->
 *******************************************************************************/
 
 class HttpSock extends TcpLink config;
@@ -523,15 +527,13 @@ protected function InternalResolved( IpAddr Addr , optional bool bDontCache)
 		curState = HTTPState_Closed;
 		return;
 	}
-	if (BoundPort == 0)
+	if (iLocalPort > 0)
 	{
-		if (iLocalPort > 0)
-		{
-			BoundPort = BindPort(iLocalPort, true);
-			if (i != iLocalPort) Logf("Could not bind preference port", class'HttpUtil'.default.LOGWARN, iLocalPort);
-		}
-		else BoundPort = BindPort();
+		BoundPort = BindPort(iLocalPort, true);
+		if (i != iLocalPort) Logf("Could not bind preference port", class'HttpUtil'.default.LOGWARN, iLocalPort);
 	}
+	else BoundPort = BindPort();
+
 	Logf("Local port succesfully bound", class'HttpUtil'.default.LOGINFO, BoundPort);
 	LinkMode = MODE_Text;
 	ReceiveMode = RMODE_Event;
@@ -615,7 +617,7 @@ event Closed()
 	if (Len(inBuffer) > 0) ProcInput(inBuffer);
 	if (!FollowingRedir)
 	{
-		Logf("Connection closed", class'HttpUtil'.default.LOGINFO);
+		Logf("Connection closed"@GetEnum(enum'ELinkState', LinkState), class'HttpUtil'.default.LOGINFO);
 		curState = HTTPState_Closed;
 		if (!bTimeout) OnComplete();
 	}

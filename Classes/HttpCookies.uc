@@ -1,13 +1,17 @@
 /*******************************************************************************
-	HttpCookies
-	Cookie management system. Part of [[LibHTTP]].
-
+	HttpCookies																	<br />
+	Cookie management system. Part of [[LibHTTP]].								<br />
+																				<br />
 	Dcoumentation and Information:
-		http://wiki.beyondunreal.com/wiki/LibHTTP
+		http://wiki.beyondunreal.com/wiki/LibHTTP								<br />
+																				<br />
+	Authors:	Michiel 'El Muerte' Hendriks &lt;elmuerte@drunksnipers.com&gt;	<br />
+																				<br />
+	Copyright 2003, 2004 Michiel "El Muerte" Hendriks							<br />
+	Released under the Lesser Open Unreal Mod License							<br />
+	http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense				<br />
 
-	Authors:	Michiel 'El Muerte' Hendriks <elmuerte@drunksnipers.com>
-
-	<!-- $Id: HttpCookies.uc,v 1.5 2004/03/14 17:37:31 elmuerte Exp $ -->
+	<!-- $Id: HttpCookies.uc,v 1.6 2004/03/17 00:17:09 elmuerte Exp $ -->
 *******************************************************************************/
 
 class HttpCookies extends Object config;

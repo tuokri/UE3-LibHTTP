@@ -1,13 +1,17 @@
 /*******************************************************************************
-	HttpUtil
-	Static functions. Part of [[LibHTTP]].
-
+	HttpUtil																	<br />
+	Miscelaneous static functions. Part of [[LibHTTP]].							<br />
+																				<br />
 	Dcoumentation and Information:
-		http://wiki.beyondunreal.com/wiki/LibHTTP
+		http://wiki.beyondunreal.com/wiki/LibHTTP								<br />
+																				<br />
+	Authors:	Michiel 'El Muerte' Hendriks &lt;elmuerte@drunksnipers.com&gt;	<br />
+																				<br />
+	Copyright 2003, 2004 Michiel "El Muerte" Hendriks							<br />
+	Released under the Lesser Open Unreal Mod License							<br />
+	http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense				<br />
 
-	Authors:	Michiel 'El Muerte' Hendriks <elmuerte@drunksnipers.com>
-
-	<!-- $Id: HttpUtil.uc,v 1.8 2004/03/14 17:37:31 elmuerte Exp $ -->
+	<!-- $Id: HttpUtil.uc,v 1.9 2004/03/17 00:17:09 elmuerte Exp $ -->
 *******************************************************************************/
 
 class HttpUtil extends Object;

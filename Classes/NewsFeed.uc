@@ -1,16 +1,20 @@
 /*******************************************************************************
-	NewsFeed
+	NewsFeed																	<br />
 	RSS\RDF Porcessing. Part of [[LibHTTP]].
-	Either RSS or RDF format is accepted.
-	''Note:'' the HTML special chars are NOT fixed, you have to do this yourself
-	''Note:'' Don't pound the webserver with requests, cache your results
-
+	Either RSS or RDF format is accepted.										<br />
+	''Note:'' the HTML special chars are NOT fixed, you have to do this yourself<br />
+	''Note:'' Don't pound the webserver with requests, cache your results		<br />
+																				<br />
 	Dcoumentation and Information:
-		http://wiki.beyondunreal.com/wiki/LibHTTP
+		http://wiki.beyondunreal.com/wiki/LibHTTP								<br />
+																				<br />
+	Authors:	Michiel 'El Muerte' Hendriks &lt;elmuerte@drunksnipers.com&gt;	<br />
+																				<br />
+	Copyright 2003, 2004 Michiel "El Muerte" Hendriks							<br />
+	Released under the Lesser Open Unreal Mod License							<br />
+	http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense				<br />
 
-	Authors:	Michiel 'El Muerte' Hendriks <elmuerte@drunksnipers.com>
-
-	<!-- $Id: NewsFeed.uc,v 1.7 2004/03/15 13:04:52 elmuerte Exp $ -->
+	<!-- $Id: NewsFeed.uc,v 1.8 2004/03/17 00:17:09 elmuerte Exp $ -->
 *******************************************************************************/
 
 class NewsFeed extends Object;
