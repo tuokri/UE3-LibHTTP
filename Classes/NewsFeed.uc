@@ -10,10 +10,15 @@
 
 	Authors:	Michiel 'El Muerte' Hendriks <elmuerte@drunksnipers.com>
 
-	$Id: NewsFeed.uc,v 1.3 2003/07/30 19:39:34 elmuerte Exp $
+	$Id: NewsFeed.uc,v 1.4 2003/07/31 08:13:17 elmuerte Exp $
 */
 
 class NewsFeed extends Object;
+
+/** The source of the data, you have to fill this in yourself */
+var string Source;
+/** Last time this source had been fetched, you have to do this yourself */
+var int LastUpdate;
 
 var string ChannelTitle;
 var string ChannelDescription;
@@ -68,7 +73,6 @@ protected function bool getLine()
 	class'HttpUtil'.static.ReplaceChar(tmp, Chr(9), " ");
 	class'HttpUtil'.static.ReplaceChar(tmp, "<", " <");
 	class'HttpUtil'.static.ReplaceChar(tmp, ">", "> ");
-	log(">>"@tmp);
 	split(tmp, " ", line);
 	lineno++;
 	wordno = 0;

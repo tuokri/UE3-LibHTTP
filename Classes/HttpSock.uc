@@ -16,13 +16,13 @@
 
 	Authors:	Michiel 'El Muerte' Hendriks <elmuerte@drunksnipers.com>
 
-	$Id: HttpSock.uc,v 1.10 2003/07/30 22:05:49 elmuerte Exp $
+	$Id: HttpSock.uc,v 1.11 2003/07/31 08:13:17 elmuerte Exp $
 */
 
 class HttpSock extends TcpLink config;
 
 /** LibHTTP version number */
-const VERSION = 104;
+const VERSION = 105;
 
 /** the output buffer size */
 const BUFFERSIZE = 2048;
@@ -76,6 +76,8 @@ var array<string> RequestData;
 var array<string> ReturnData;
 /** the cookie data instance */
 var HTTPCookies Cookies;
+/** The last returned HTTP status code */
+var int LastStatus;
 
 /** @ignore */
 var protected string inBuffer, outBuffer;
@@ -482,6 +484,7 @@ protected function ProcInput(string inline)
 			}
 									// code       description    http/1.0
 			OnReturnCode(retc, tmp2[2], tmp2[0]);
+			LastStatus = retc;
 		}
 		ReturnHeaders[ReturnHeaders.length] = inline;
 
