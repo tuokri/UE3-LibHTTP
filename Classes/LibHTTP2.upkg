@@ -1,4 +1,12 @@
 [Flags]
 AllowDownload=True
-ClientOptional=False
 ServerSideOnly=False
+ClientOptional=False
+Official=False
+
+[Package_Description]
+LibHTTP is a general perpose library with functionality to
+retrieve from webpages.
+It has support for proxies, basic authentication,
+automatic redirection, HTTP/1.1.
+
