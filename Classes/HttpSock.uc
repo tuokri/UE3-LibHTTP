@@ -28,7 +28,7 @@
 	Released under the Lesser Open Unreal Mod License							<br />
 	http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense				<br />
 
-	<!-- $Id: HttpSock.uc,v 1.16 2004/03/17 00:17:09 elmuerte Exp $ -->
+	<!-- $Id: HttpSock.uc,v 1.17 2004/03/24 11:39:18 elmuerte Exp $ -->
 *******************************************************************************/
 
 class HttpSock extends TcpLink config;
@@ -195,6 +195,11 @@ delegate OnComplete();
 	Called before the connection is established
 */
 delegate OnPreConnect();
+
+/**
+	Called when Open() fails
+*/
+delegate OnConnectError();
 
 /**
 	Called before the redirection is followed, return false to prevernt following
@@ -534,7 +539,9 @@ protected function InternalResolved( IpAddr Addr , optional bool bDontCache)
 	}
 	else BoundPort = BindPort();
 
-	Logf("Local port succesfully bound", class'HttpUtil'.default.LOGINFO, BoundPort);
+	if (BoundPort > 0) Logf("Local port succesfully bound", class'HttpUtil'.default.LOGINFO, BoundPort);
+	else Logf("Error binding local port", class'HttpUtil'.default.LOGINFO, BoundPort );
+
 	LinkMode = MODE_Text;
 	ReceiveMode = RMODE_Event;
 
@@ -545,8 +552,9 @@ protected function InternalResolved( IpAddr Addr , optional bool bDontCache)
 	Logf("Opening connection", class'HttpUtil'.default.LOGINFO);
 	if (!Open(LocalLink))
 	{
-		Logf("Open() failed", class'HttpUtil'.default.LOGERR);
+		Logf("Open() failed", class'HttpUtil'.default.LOGERR, GetLastError());
 		curState = HTTPState_Closed;
+		OnConnectError();
 	}
 }
 
@@ -562,9 +570,9 @@ function Timer()
 	if (curState == HTTPState_Connecting)
 	{
 		bTimeout = true;
-		LinkState = STATE_Initialized;
 		Logf("Connection timeout", class'HttpUtil'.default.LOGERR, fConnectTimout);
 		if (IsConnected()) Close();
+		LinkState = STATE_Initialized;
 		curState = HTTPState_Closed;
 		OnConnectionTimeout();
 	}
