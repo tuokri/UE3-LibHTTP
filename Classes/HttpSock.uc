@@ -28,11 +28,14 @@
 	Released under the Lesser Open Unreal Mod License							<br />
 	http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense				<br />
 
-	<!-- $Id: HttpSock.uc,v 1.19 2004/09/02 11:47:38 elmuerte Exp $ -->
+	<!-- $Id: HttpSock.uc,v 1.20 2004/09/02 11:49:22 elmuerte Exp $ -->
 *******************************************************************************/
 /*
 	TODO:
 	- implement fast get (within a tick with set limits/manual transfer)
+	- add HEAD support
+	- add changed since
+	- make cookies savable in Xs
 */
 class HttpSock extends Info config;
 
