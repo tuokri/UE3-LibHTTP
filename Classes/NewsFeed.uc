@@ -10,7 +10,7 @@
 
 	Authors:	Michiel 'El Muerte' Hendriks <elmuerte@drunksnipers.com>
 
-	<!-- $Id: NewsFeed.uc,v 1.6 2004/03/14 17:37:31 elmuerte Exp $ -->
+	<!-- $Id: NewsFeed.uc,v 1.7 2004/03/15 13:04:52 elmuerte Exp $ -->
 *******************************************************************************/
 
 class NewsFeed extends Object;
@@ -37,7 +37,7 @@ var protected array<string> data, line;
 var protected int lineno, wordno;
 
 /** Main function to parse the input data */
-function int ParseRDFData(array<string> inp)
+function int ParseRDFData(out array<string> inp)
 {
 	lineno = 0;
 	wordno = 0;
