@@ -10,7 +10,7 @@
 
 	Authors:	Michiel 'El Muerte' Hendriks <elmuerte@drunksnipers.com>
 
-	$Id: NewsFeed.uc,v 1.4 2003/07/31 08:13:17 elmuerte Exp $
+	$Id: NewsFeed.uc,v 1.5 2003/07/31 08:34:28 elmuerte Exp $
 */
 
 class NewsFeed extends Object;
@@ -154,12 +154,12 @@ protected function bool _channel(array<string> Args)
 		tag = getTag(args);
 		if (tag ~= "TITLE")
 		{
-			ChannelDescription = getToNextTag();
+			ChannelTitle = getToNextTag();
 			tag = getTag(args);
 		}
 		else if (tag ~= "DESCRIPTION")
 		{
-			ChannelTitle = getToNextTag();
+			ChannelDescription = getToNextTag();
 			tag = getTag(args);
 		}
 		else if (tag ~= "LINK")

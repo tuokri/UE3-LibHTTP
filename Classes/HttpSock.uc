@@ -16,7 +16,7 @@
 
 	Authors:	Michiel 'El Muerte' Hendriks <elmuerte@drunksnipers.com>
 
-	$Id: HttpSock.uc,v 1.11 2003/07/31 08:13:17 elmuerte Exp $
+	$Id: HttpSock.uc,v 1.12 2003/07/31 08:34:28 elmuerte Exp $
 */
 
 class HttpSock extends TcpLink config;
@@ -558,7 +558,7 @@ protected function string genBasicAuthorization(string Username, string Password
 	local array<string> res;
 	if (authBasicLookup.length == 0) class'HttpUtil'.static.Base64EncodeLookupTable(authBasicLookup);
 	res[0] = Username$":"$Password;
-	res = class'LibHTTP.HttpUtil'.static.Base64Encode(res, authBasicLookup);
+	res = class'HttpUtil'.static.Base64Encode(res, authBasicLookup);
 	Logf("Base 64 encoding", class'HttpUtil'.default.LOGINFO, Username$":"$Password, res[0]);
 	return "Basic"@res[0];
 }
