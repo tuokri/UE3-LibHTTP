@@ -23,6 +23,8 @@
 	* Improved easy of use:
 		get(), post(), head()													<br />
 	* Support for multipart/form-data POST data									<br />
+	* Two different transfer modes: Normal and Fast (tries to download as much
+		data as allowed within a single tick)									<br />
 																				<br />
 	Dcoumentation and Information:
 		http://wiki.beyondunreal.com/wiki/LibHTTP								<br />
@@ -33,7 +35,7 @@
 	Released under the Lesser Open Unreal Mod License							<br />
 	http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense				<br />
 
-	<!-- $Id: HttpSock.uc,v 1.22 2004/09/16 14:33:40 elmuerte Exp $ -->
+	<!-- $Id: HttpSock.uc,v 1.23 2004/09/19 11:17:42 elmuerte Exp $ -->
 *******************************************************************************/
 /*
 	TODO:
@@ -110,6 +112,32 @@ var(Proxy) globalconfig bool bUseProxy;
 var(Proxy) globalconfig string sProxyHost;
 /** The proxy port */
 var(Proxy) globalconfig int iProxyPort;
+
+/**
+	Method used to download the data. <br />
+	<code>TM_Fast</code> will try to read as much as possible in a single tick,
+	this will have an impact on the game performance during the download. Only
+	use this mode when it's time critical. Use the variables
+	<code>iMaxBytesPerTick</code> and <code>iMaxIterationsPerTick</code> to
+	tweak this transfer mode.
+*/
+enum ETransferMode
+{
+	TM_Normal,
+	TM_Fast,
+};
+/** Transfer mode to use during downloads */
+var(XferMode) config ETransferMode TransferMode;
+/** maximum number of bytes to download in a single tick */
+var(XferMode) config int iMaxBytesPerTick;
+/**
+	Maximum iterations per tick in fast transfer mode. This defines the number
+	of download retries (when nothing was received) the code may perform within
+	a single tick. Because the data pending variable is only updated each tick
+	it will remain true	until the transfer function returns even tho there is no
+	data pending.
+*/
+var(XferMode) config int iMaxIterationsPerTick;
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -722,7 +750,13 @@ function InternalResolved( InternetLink.IpAddr Addr , optional bool bDontCache)
 	}
 
 	HttpLink.LinkMode = MODE_Text;
-	HttpLink.ReceiveMode = RMODE_Event;
+	if (TransferMode == TM_Fast)
+	{
+		HttpLink.ReceiveMode = RMODE_Manual;
+		if (iMaxBytesPerTick <= 0) iMaxBytesPerTick = default.iMaxBytesPerTick;
+		if (iMaxIterationsPerTick <= 0) iMaxIterationsPerTick = default.iMaxIterationsPerTick;
+	}
+	else HttpLink.ReceiveMode = RMODE_Event;
 
 	OnPreConnect();
 	curState = HTTPState_Connecting;
@@ -1013,4 +1047,7 @@ defaultproperties
 	bUseProxy=false
 	fConnectTimout=60
 	HttpLinkClass=class'HttpLink'
+	TransferMode=TM_Normal
+	iMaxIterationsPerTick=32
+	iMaxBytesPerTick=4096
 }
