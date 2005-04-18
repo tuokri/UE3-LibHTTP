@@ -1,0 +1,22 @@
+[Flags]
+AllowDownload=True
+ServerSideOnly=False
+ClientOptional=False
+Official=False
+
+[Package_Description]
+LibHTTP is a general perpose library for UnrealEngine2. It allows you to fetch files stored on webservers. <br />
+Features:
+<ul>
+<li>Support for HTTP version 1.0 and 1.1</li>
+<li>Support for GET/POST/HEAD/TRACE request methods</li>
+<li>Normal and accelerated transfer modes (accelerated mode creates a performance hit)</li>
+<li>Response and Request Header managent</li>
+<li>Cookie management</li>
+<li>Authentication supports (both Basic and Digest methods are supported)</li>
+<li>Support for HTTP proxies</li>
+<li>Gracefull handling of connection timeouts</li>
+<li>Automatic decoding of chunked data</li>
+<li>Automatically follows redirections (creates a redirection history)</li>
+<li>Support for <code>multipart/form-data</code> POST data (prefered form)</li>
+</ul>

@@ -47,22 +47,29 @@
 	* Empty multipart items are never added                                     <br />
 	* Made more support functions public                                        <br />
 																				<br />
+	New in version 360:                                                         <br />
+	* redone the redirection processing, now with better support for each
+        redirection type.                                                       <br />
+    * new variable bRfcCompliantRedirect, set this to false for the old, and
+        bad, redirection handling on 301/302 headers (e.g. transform POST into
+        GET)                                                                    <br />
+																				<br />
 	Dcoumentation and Information:
 		http://wiki.beyondunreal.com/wiki/LibHTTP                               <br />
 																				<br />
 	Authors:    Michiel 'El Muerte' Hendriks &lt;elmuerte@drunksnipers.com&gt;  <br />
 																				<br />
-	Copyright 2003, 2004 Michiel "El Muerte" Hendriks                           <br />
+	Copyright 2003-2005 Michiel "El Muerte" Hendriks                            <br />
 	Released under the Lesser Open Unreal Mod License                           <br />
 	http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense                <br />
 
-	<!-- $Id: HttpSock.uc,v 1.36 2005/02/21 16:02:07 elmuerte Exp $ -->
+	<!-- $Id: HttpSock.uc,v 1.37 2005/04/18 08:17:44 elmuerte Exp $ -->
 *******************************************************************************/
 
 class HttpSock extends Engine.Info config;
 
 /** LibHTTP version number */
-const VERSION = 353;
+const VERSION = 360;
 /**
 	If you make a custom build of this package, or subclass this class then
 	please change the following constant to countain your "extention" name. This
@@ -91,7 +98,10 @@ var protected string HTTPVER;
 
 ////////////////////////////////////////////////////////////////////////////////
 //
-//   Configuration variables
+//  Configuration variables
+//  The "Proxy" variables are reserved for end-user configuration
+//  The other config options should only be used as config option if you create
+//  a subclass of HttpSock.
 //
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -116,7 +126,7 @@ enum EAuthMethod
 	AM_Digest,
 };
 /** The username and password to use when authentication is required, can be
-	passed in the url */
+	passed in the url. */
 var(Authentication) config string sAuthUsername, sAuthPassword;
 /** Authentication method to use when <code>sUsername</code> is set. This will
 	automatically be set when a <code>WWW-Authenticate</code> header is received */
@@ -131,6 +141,13 @@ var(Authentication) array<GameInfo.KeyValuePair> AuthInfo;
 var(Options) config int iVerbose;
 /** when set to false it won't follow redirects */
 var(Options) config bool bFollowRedirect;
+/**
+	responding to HTTP redirect headers is RFC compliant, otherwise it will
+	behave much like some other HTTP clients behave. This means that in case
+	of a 301/302 it will set the request method from POST to GET. This is not
+	the way it should happen according to the standard.
+*/
+var(Options) config bool bRfcCompliantRedirect;
 /** Maximum redirections to follow */
 var(Options) config int iMaxRedir;
 /** Send cookie data when available, defaults to true */
@@ -156,6 +173,8 @@ var(Proxy) globalconfig string sProxyUser, sProxyPass;
 var(Proxy) EAuthMethod ProxyAuthMethod;
 /** authentication information */
 var(Proxy) array<GameInfo.KeyValuePair> ProxyAuthInfo;
+/** will be set to true in case of a  */
+var protected bool bTempProxyOverride;
 
 /**
 	Method used to download the data. <br />
@@ -295,9 +314,9 @@ var protected array<ResolveCacheEntry> ResolveCache;
 var protected string ResolveHostname;
 /**
 	received cookie data, will be postponed until the whole header has been
-	received
+	received (DEPRECATED)
 */
-var protected array<string> PendingCookieData;
+var deprecated protected array<string> PendingCookieData;
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -369,7 +388,7 @@ delegate OnRequestBody(HttpSock Sender);
 /**
 	Will be called for every response line received (only the body). Return
 	false to stop the default behavior of storing the response body. Use this
-	delegate if you need to have life updates of the content and can not wait
+	delegate if you need to have live updates of the content and can not wait
 	until the request is complete.
 */
 delegate bool OnResponseBody(HttpSock Sender, string line)
@@ -1010,7 +1029,6 @@ function Opened()
 	curState = HTTPState_SendingRequest;
 	inBuffer = ""; // clear buffer
 	outBuffer = ""; // clear buffer
-	PendingCookieData.length = 0;
 	if (bUseProxy) SendData(RequestMethod@"http://"$sHostname$":"$string(iPort)$RequestLocation@"HTTP/"$HTTPVER);
 		else SendData(RequestMethod@RequestLocation@"HTTP/"$HTTPVER);
 	totalDataSize = DataSize(RequestData);
@@ -1126,99 +1144,27 @@ function ReceivedText( string Line )
 	if (tmp.length > 0) inBuffer = tmp[tmp.length-1];
 }
 
-protected function bool ShouldFollowRedirect(int retc, string method)
-{
-	if (!bFollowRedirect) return false;
-	if ((method == HTTP_HEAD) || (method == HTTP_TRACE)) return false;
-	if (iMaxRedir < CurRedir) return false;
-	return ((retc >= 300) && (retc < 400)) || (retc == 201);
-}
-
 /**
 	Process the input
 */
 protected function ProcInput(string inline)
 {
-	local array<string> tmp2;
-	local int retc, i;
 	Logf("Received data", class'HttpUtil'.default.LOGDATA, procHeader@len(inline), inline);
 	if (procHeader)
 	{
 		if (inline == "")
 		{
 			procHeader = false;
-			for (i = 0; i < PendingCookieData.length; i++)
-			{
-				Cookies.ParseCookieData(PendingCookieData[i], sHostname, RequestLocation, now(), true, TZoffset);
-			}
-			return;
+			ProcHeaders();
 		}
-
-		if (ReturnHeaders.length == 0)
-		{
-			Split(inline, " ", tmp2);
-			retc = int(tmp2[1]);
-			if (ShouldFollowRedirect(retc, RequestMethod))
-			{
-				Logf("Redirecting", class'HttpUtil'.default.LOGINFO, retc);
-				FollowingRedir = true;
-				RedirTrap = false;
-			}
-			RequestHistory[RequestHistory.Length-1].HTTPresponse = retc;
-					  // code  description  http/1.0
-			OnReturnCode(self, retc, tmp2[2], tmp2[0]);
-			LastStatus = retc;
-		}
-		ReturnHeaders[ReturnHeaders.length] = inline;
-
-		// if following redirection find new location
-		retc = InStr(inline, ":");
-		if (FollowingRedir)
-		{
-			if (Left(inline, retc) ~= "location") // don't redirect on HEAD
-			{
-				Logf("Redirect Location", class'HttpUtil'.default.LOGINFO, inline);
-				RequestLocation = class'HttpUtil'.static.Trim(Mid(inline, retc+1));
-				if (RequestMethod != HTTP_GET) // redir is always a GET
-				{
-					Logf("Changing request method to GET for redirection", class'HttpUtil'.default.LOGWARN, RequestMethod);
-					RequestMethod = HTTP_GET;
-				}
-				if (Left(RequestLocation, 4) ~= "http") ParseRequestUrl(RequestLocation, RequestMethod);
-				RedirTrap = true;
-			}
-		}
-		if (bProcCookies && (Cookies != none))
-		{
-			if (Left(inline, retc) ~= "set-cookie")
-			{
-				PendingCookieData[PendingCookieData.Length] = Mid(inline, retc+1);
-			}
-		}
-		if (Left(inline, retc) ~= "date")
-		{
-			// calculate timezone offset
-			i = class'HttpUtil'.static.stringToTimestamp(class'HttpUtil'.static.trim(Mid(inline, retc+1)), 0);
-			Logf("Server date", class'HttpUtil'.default.LOGINFO, i, class'HttpUtil'.static.timestampToString(i));
-			if (i != 0)
-			{
-				TZoffset = (now()-i)/3600;
-				Logf("Timezone offset", class'HttpUtil'.default.LOGINFO, TZoffset);
-			}
-		}
-		if (Left(inline, retc) ~= "transfer-encoding")
-		{
-			bIsChunked = InStr(Caps(inline), "CHUNKED") > -1;
-			Logf("Body is chunked", class'HttpUtil'.default.LOGINFO, bIsChunked);
-		}
-		if (Left(inline, retc) ~= "www-authenticate")
-		{
-			ProccessWWWAuthenticate(Mid(inline, retc+1), false);
-		}
-		if (Left(inline, retc) ~= "proxy-authorization")
-		{
-			ProccessWWWAuthenticate(Mid(inline, retc+1), true);
-		}
+		else {
+            if (Left(inline, 5) ~= "date:") // make "date:" header 2nd in line
+            {
+                ReturnHeaders.Insert(1,1);
+                ReturnHeaders[1] = inline;
+            }
+            else ReturnHeaders[ReturnHeaders.length] = inline;
+        }
 	}
 	else {
 		if (bIsChunked && (chunkedCounter <= 0))
@@ -1231,6 +1177,127 @@ protected function ProcInput(string inline)
 				ReturnData[ReturnData.length] = inline;
 		}
 	}
+}
+
+/**
+	Will be called by ProcInput after all headers have been received
+*/
+protected function ProcHeaders()
+{
+	local int i;
+	local string lhs, rhs;
+	local array<string> tmp;
+
+	// first entry is the HTTP response code
+	Split(ReturnHeaders[0], " ", tmp);
+	LastStatus = int(tmp[1]);
+	if (ShouldFollowRedirect(LastStatus, RequestMethod))
+	{
+		Logf("Redirecting", class'HttpUtil'.default.LOGINFO, LastStatus);
+		FollowingRedir = true;
+		RedirTrap = false;
+	}
+	RequestHistory[RequestHistory.Length-1].HTTPresponse = LastStatus;
+				   // code  description  http/1.1
+	OnReturnCode(self, LastStatus, tmp[2], tmp[0]);
+
+	for (i = 1; i < ReturnHeaders.length; i++ )
+	{
+		if (!Divide(ReturnHeaders[i], ":", lhs, rhs)) continue;
+
+		if (lhs ~= "set-cookie")
+		{
+            if (bProcCookies && (Cookies != none))
+            {
+                Cookies.ParseCookieData(rhs, sHostname, RequestLocation, now(), true, TZoffset);
+            }
+		}
+		else if (lhs ~= "date")
+		{
+			// calculate timezone offset
+			i = class'HttpUtil'.static.stringToTimestamp(class'HttpUtil'.static.trim(rhs), 0);
+			Logf("Server date", class'HttpUtil'.default.LOGINFO, i, class'HttpUtil'.static.timestampToString(i));
+			if (i != 0)
+			{
+				TZoffset = (now()-i)/3600;
+				Logf("Timezone offset", class'HttpUtil'.default.LOGINFO, TZoffset);
+			}
+		}
+		else if (lhs ~= "transfer-encoding")
+		{
+			bIsChunked = InStr(Caps(rhs), "CHUNKED") > -1;
+			if (bIsChunked) Logf("Body is chunked", class'HttpUtil'.default.LOGINFO, bIsChunked);
+		}
+		else if (lhs ~= "www-authenticate")
+		{
+			ProccessWWWAuthenticate(rhs, false);
+		}
+		else if (lhs ~= "proxy-authorization")
+		{
+			ProccessWWWAuthenticate(rhs, true);
+		}
+	}
+}
+
+/**
+	returns true when a redirect should be followed, also updates headers for
+	the next request.
+*/
+protected function bool ShouldFollowRedirect(int retc, string method)
+{
+	local int i;
+	if (!bFollowRedirect) return false;
+	if ((method == HTTP_HEAD) || (method == HTTP_TRACE)) return false;
+	if (iMaxRedir < CurRedir) return false;
+	switch (retc)
+	{
+		case 300: // "Multiple Choices"; find prefered location
+            // TODO:
+			return true;
+		case 303: // "See Other"; transform into POST into GET
+			if (RequestMethod != HTTP_GET) // redir is always a GET
+			{
+				Logf("Changing request method to GET for redirection", class'HttpUtil'.default.LOGWARN, RequestMethod);
+				RequestMethod = HTTP_GET;
+			}
+		case 301: // "Moved Permanently";
+		case 302: // "Found";
+			if (!bRfcCompliantRedirect)
+			{
+				if (RequestMethod != HTTP_GET) // redir is always a GET
+				{
+					Logf("Changing request method to GET for redirection", class'HttpUtil'.default.LOGWARN, RequestMethod);
+					RequestMethod = HTTP_GET;
+				}
+			}
+		// semi blind redirects (no additional logic needed)
+		case 201: // "Created";
+		case 307: // "Temporary Redirect";
+			// find the Location: field
+			for (i = 0; i < ReturnHeaders.length; i++)
+			{
+                if (left(ReturnHeaders[i], 9) ~= "location:")
+                {
+                    RequestLocation = class'HttpUtil'.static.Trim(mid(ReturnHeaders[i], 9));
+                    if (Left(RequestLocation, 4) ~= "http") ParseRequestUrl(RequestLocation, RequestMethod);
+                    RedirTrap = true;
+                    break;
+                }
+			}
+			return true;
+		case 305: // "Use Proxy"; proxy host is in location
+            for (i = 0; i < ReturnHeaders.length; i++)
+			{
+                if (left(ReturnHeaders[i], 9) ~= "location:")
+                {
+                    // TODO: temp proxy
+                    RedirTrap = true;
+                    break;
+                }
+			}
+			return true;
+	}
+	return false;
 }
 
 /**
@@ -1396,6 +1463,7 @@ defaultproperties
 	iVerbose=-1
 	iLocalPort=0
 	bFollowRedirect=true
+	bRfcCompliantRedirect=true
 	curState=HTTPState_Closed
 	iMaxRedir=5
 	HTTPVER="1.1"
