@@ -5,7 +5,7 @@
     Released under the Lesser Open Unreal Mod License                           <br />
     http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense
 
-    <!-- $Id: HttpTest.uc,v 1.8 2004/10/20 13:53:18 elmuerte Exp $ -->
+    <!-- $Id: HttpTest.uc,v 1.9 2005/05/29 20:07:52 elmuerte Exp $ -->
 *******************************************************************************/
 class HttpTest extends Engine.Info;
 
@@ -19,6 +19,7 @@ enum EHttpTests
     HT_FASTGET,
     HT_TRACE,
     HT_PROXY,
+    HT_DUAL,
 };
 var config array<EHttpTests> Tests;
 
@@ -70,7 +71,7 @@ var int TestId;
 var int TestIteration;
 
 /** our test socket */
-var HttpSock sock;
+var HttpSock sock, sock2;
 
 event PostBeginPlay()
 {
@@ -79,6 +80,7 @@ event PostBeginPlay()
     sock.OnComplete = DownloadComplete;
     sock.Cookies = new class'HttpCookies';
     sock.Cookies.iVerbose = class'HttpUtil'.default.LOGINFO; // for debugging
+    sock.tag = '_sock1';
 
     TestId = 0;
     TestIteration = 0;
@@ -125,6 +127,8 @@ function RunTest()
         case HT_PROXY:
             testProxy();
             break;
+        case HT_DUAL:
+            testDual();
     }
 }
 
@@ -134,37 +138,38 @@ function DownloadComplete(HttpSock Sender)
     local FileLog f;
     local int i;
     f = spawn(class'FileLog');
-    f.OpenLog("LibHTTP3-"$GetEnum(enum'EHttpTests', Tests[TestId])$"-"$TestIteration, "html", true);
+    f.OpenLog("LibHTTP3-"$GetEnum(enum'EHttpTests', Tests[TestId])$"-"$TestIteration$string(Sender.Tag), "html", true);
     f.logf("<!-- ");
-    for (i = 0; i < sock.RequestHistory.length-1; i++)
+    for (i = 0; i < Sender.RequestHistory.length-1; i++)
     {
-        f.logf("Hostname:"@sock.RequestHistory[i].Hostname);
-        f.logf("Location:"@sock.RequestHistory[i].Location);
-        f.logf("Method:"@sock.RequestHistory[i].Method);
-        f.logf("Response:"@sock.RequestHistory[i].HTTPresponse);
+        f.logf("Hostname:"@Sender.RequestHistory[i].Hostname);
+        f.logf("Location:"@Sender.RequestHistory[i].Location);
+        f.logf("Method:"@Sender.RequestHistory[i].Method);
+        f.logf("Response:"@Sender.RequestHistory[i].HTTPresponse);
         f.logf("");
     }
-    f.logf("Hostname:"@sock.sHostname);
-    f.logf("Location:"@sock.RequestLocation);
-    f.logf("Method:"@sock.RequestMethod);
-    f.logf("RequestDuration:"@sock.RequestDuration);
+    f.logf("Hostname:"@Sender.sHostname);
+    f.logf("Location:"@Sender.RequestLocation);
+    f.logf("Method:"@Sender.RequestMethod);
+    f.logf("RequestDuration:"@Sender.RequestDuration);
     f.logf("");
-    for (i = 0; i < sock.ReturnHeaders.length; i++)
+    for (i = 0; i < Sender.ReturnHeaders.length; i++)
     {
-        f.Logf(sock.ReturnHeaders[i]);
+        f.Logf(Sender.ReturnHeaders[i]);
     }
     f.logf("-->");
-    for (i = 0; i < sock.ReturnData.length; i++)
+    for (i = 0; i < Sender.ReturnData.length; i++)
     {
-        if (len(sock.ReturnData[i]) > 1024)
+        if (len(Sender.ReturnData[i]) > 1024)
         {
-            f.Logf(Left(sock.ReturnData[i], 1024));
-            f.Logf(Mid(sock.ReturnData[i], 1024));
+            f.Logf(Left(Sender.ReturnData[i], 1024));
+            f.Logf(Mid(Sender.ReturnData[i], 1024));
         }
-        else f.Logf(sock.ReturnData[i]);
+        else f.Logf(Sender.ReturnData[i]);
     }
     f.Destroy();
-    RunTest();
+    if (sock2 == none) RunTest();
+    else if ((sock.curState == HTTPState_Closed) && (sock2.curState == HTTPState_Closed)) RunTest();
 }
 
 /** normal get request tests */
@@ -277,7 +282,29 @@ function testProxy()
     TestIteration++;
 }
 
+function testDual()
+{
+    if (sock2 == none)
+    {
+        sock2 = spawn(class'HttpSock');
+        sock2.iVerbose = class'HttpUtil'.default.LOGDATA; // set the verbosity very high to see what happens (for debugging)
+        sock2.OnComplete = DownloadComplete;
+        sock2.Cookies = new class'HttpCookies';
+        sock2.Cookies.iVerbose = class'HttpUtil'.default.LOGINFO; // for debugging
+        sock2.Tag = '_sock2';
+    }
+    if (TestIteration >= GetUrls.Length)
+    {
+        NextTest();
+        return;
+    }
+    sock.TransferMode = TM_Normal;
+    sock2.TransferMode = TM_Normal;
+    sock.get(GetUrls[TestIteration]);
+    sock2.get(GetUrls[TestIteration++]);
+}
+
 defaultproperties
 {
-    Tests=(HT_GET,HT_HEAD,HT_POST,HT_AUTH,HT_FASTGET,HT_TRACE,HT_PROXY)
+    Tests=(HT_GET,HT_HEAD,HT_POST,HT_AUTH,HT_FASTGET,HT_TRACE,HT_PROXY,HT_DUAL)
 }

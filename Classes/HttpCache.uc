@@ -1,25 +1,25 @@
 /*******************************************************************************
-	HttpCache                                                                   <br />
-	Disk\Memory cache for LibHTTP, it will handle caching of data. To use it
-	simply create a HttpCache object and use it's get() request to get updated
-	documents. Don't use a HttpSock instance for this.                          <br />
-	When using this class it will perform a specially constructed get request
-	when it's needed, it will try to satisfy the caching headers returned by the
-	server. Ihis class is only usefull if you know the remote server returns
-	correct cachable data. By default most dynamic pages (ASP, PHP, Perl, CGI)
+    HttpCache                                                                   <br />
+    Disk\Memory cache for LibHTTP, it will handle caching of data. To use it
+    simply create a HttpCache object and use it's get() request to get updated
+    documents. Don't use a HttpSock instance for this.                          <br />
+    When using this class it will perform a specially constructed get request
+    when it's needed, it will try to satisfy the caching headers returned by the
+    server. Ihis class is only usefull if you know the remote server returns
+    correct cachable data. By default most dynamic pages (ASP, PHP, Perl, CGI)
     will return non-cachable pages.                                             <br />
 
                                                                                 <br />
-	Dcoumentation and Information:
-		http://wiki.beyondunreal.com/wiki/LibHTTP                               <br />
-																				<br />
-	Authors:    Michiel 'El Muerte' Hendriks &lt;elmuerte@drunksnipers.com&gt;  <br />
-																				<br />
-	Copyright 2005 Michiel "El Muerte" Hendriks                                 <br />
-	Released under the Lesser Open Unreal Mod License                           <br />
-	http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense                <br />
+    Dcoumentation and Information:
+        http://wiki.beyondunreal.com/wiki/LibHTTP                               <br />
+                                                                                <br />
+    Authors:    Michiel 'El Muerte' Hendriks &lt;elmuerte@drunksnipers.com&gt;  <br />
+                                                                                <br />
+    Copyright 2005 Michiel "El Muerte" Hendriks                                 <br />
+    Released under the Lesser Open Unreal Mod License                           <br />
+    http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense                <br />
 
-	<!-- $Id: HttpCache.uc,v 1.1 2005/04/18 08:18:22 elmuerte Exp $ -->
+    <!-- $Id: HttpCache.uc,v 1.2 2005/05/29 20:07:52 elmuerte Exp $ -->
 *******************************************************************************/
 
 class HttpCache extends Engine.Info config;
@@ -76,23 +76,29 @@ var protected array<HttpCacheObject> CacheObjectList;
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
-	Will be called in case of an internal error.
+    Will be called in case of an internal error.
 */
 delegate OnError(HttpCache Sender, string ErrorMessage, optional string Param1, optional string Param2);
 
 /**
-	Will be called when the operation was completed successfully.
+    Will be called when the operation was completed successfully.
 */
 delegate OnComplete(HttpLink Sender, HttpCacheObject Data, EDataOrigin origin);
 
 // failed to complete the request, will be called when everything fails
-delegate OnFail(HttpLink Sender, ECacheFailError reason)
+delegate OnFail(HttpLink Sender, ECacheFailError reason);
 
 // cache hit
-delegate OnCacheHit();
+delegate OnCacheHit(HttpCache Sender);
 // cache fail, get fresh info
-delegate OnCacheFail();
+delegate OnCacheFail(HttpCache Sender);
 
+/**
+    Will be called after the HttpSock instance has been created. Use it to set
+    certain variables and delegates for the HttpSock. <br />
+    Note: some delegates in HttpSock will always be assigned to this actor.
+*/
+delegate OnCreateSock(HttpCache Sender);
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -101,11 +107,12 @@ delegate OnCacheFail();
 ////////////////////////////////////////////////////////////////////////////////
 
 /**
-	// TODO:
+    // TODO:
 */
 function bool get(string location)
 {
-	// TODO:
+    // TODO:
+    return true;
 }
 
 /**
@@ -113,7 +120,7 @@ function bool get(string location)
 */
 function bool isCached(string location)
 {
-
+    return false;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

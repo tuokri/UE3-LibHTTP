@@ -1,7 +1,7 @@
 /*******************************************************************************
     NewsFeed                                                                    <br />
     RSS\RDF Porcessing. Part of [[LibHTTP]].
-    Either RSS or RDF format is accepted.                                        <br />
+    Either RSS or RDF format is accepted.                                       <br />
     ''Note:'' the HTML special chars are NOT fixed, you have to do this yourself<br />
     ''Note:'' Don't pound the webserver with requests, cache your results       <br />
                                                                                 <br />
@@ -14,7 +14,7 @@
     Released under the Lesser Open Unreal Mod License                           <br />
     http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense
 
-    <!-- $Id: NewsFeed.uc,v 1.11 2004/10/20 13:53:18 elmuerte Exp $ -->
+    <!-- $Id: NewsFeed.uc,v 1.12 2005/05/29 20:07:52 elmuerte Exp $ -->
 *******************************************************************************/
 
 class NewsFeed extends Core.Object PerObjectConfig;
@@ -57,7 +57,7 @@ var protected array<string> data, line;
 var protected int lineno, wordno;
 
 /** Main function to parse the input data */
-function int ParseRDFData(out array<string> inp)
+function int ParseRDFData(array<string> inp)
 {
     lineno = 0;
     wordno = 0;
