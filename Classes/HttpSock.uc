@@ -65,7 +65,7 @@
     Released under the Lesser Open Unreal Mod License                           <br />
     http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense                <br />
 
-    <!-- $Id: HttpSock.uc,v 1.38 2005/05/29 20:07:52 elmuerte Exp $ -->
+    <!-- $Id: HttpSock.uc,v 1.39 2005/08/22 10:30:53 elmuerte Exp $ -->
 *******************************************************************************/
 
 class HttpSock extends Engine.Info config;
@@ -694,7 +694,7 @@ static function string randString(optional int size, optional coerce string pref
     while (i > 0)
     {
         str = str$class'HttpUtil'.static.DecToHex(MaxInt*frand(), 4);
-        i -= len(str);
+        i -= 4;
     }
     return prefix$Left(str, size);
 }
