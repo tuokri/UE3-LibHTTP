@@ -14,7 +14,7 @@
     Released under the Lesser Open Unreal Mod License                           <br />
     http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense
 
-    <!-- $Id: HttpUtil.uc,v 1.17 2004/10/20 13:53:18 elmuerte Exp $ -->
+    <!-- $Id: HttpUtil.uc,v 1.18 2005/08/30 18:15:29 elmuerte Exp $ -->
 *******************************************************************************/
 
 class HttpUtil extends Core.Object;
@@ -54,6 +54,42 @@ struct MD5_CTX
     var array<byte> buffer;
 };
 
+/** a better URL structure that contains all elements */
+struct xURL
+{
+    /**
+        protocol used, like http:/ /, https:/ /, ftp:/ /. But without the ':/ /'
+        part. (ignore the space between the two slashes, it's required because of
+        a bug in UE2)
+    */
+    var string protocol;
+    /** username that was provided in the URL */
+    var string username;
+    /** possible password that was in the url */
+    var string password;
+    /** the hostname */
+    var string hostname;
+    /** the location field, all from the hostname up to the query or hash string, includes leading / */
+    var string location;
+    /** the part after the ?, without the leading ? */
+    var string query;
+    /** the part after the #, without the leading # */
+    var string hash;
+};
+
+/** URL delimiter */
+const TOKEN_PATH = "/";
+/** URL delimiter */
+const TOKEN_HASH = "#";
+/** URL delimiter */
+const TOKEN_QUERY = "?";
+/** URL delimiter; to seperate protocol from the rest */
+const TOKEN_PROTOCOL = "://";
+/** URL delimiter */
+const TOKEN_USER = "@";
+/** URL delimiter; to seperate the user and pass from the url */
+const TOKEN_USERPASS = ":";
+
 /**
     Encode special characters, you should not use this function, it's slow and not
     secure, so try to avoid it.
@@ -75,11 +111,90 @@ static final function string RawUrlEncode(string instring)
     return instring;
 }
 
+/** parses the inURL to an xURL structure, return true when succesful */
+static final function bool parseUrl(string inURL, out xURL outURL)
+{
+    local int i;
+    i = InStr(inURL, TOKEN_PROTOCOL);
+    if (i == -1) return false;
+    if (i == 0) return false; // empty protocol
+    outURL.protocol = Left(inURL, i);
+    inURL = mid(inURL, i+len(TOKEN_PROTOCOL));
+    i = InStr(inURL, TOKEN_USER);
+    if (i == -1)
+    {
+        outURL.username = "";
+        outURL.password = "";
+    }
+    else {
+        outURL.username = Left(inURL, i);
+        inURL = mid(inURL, i+len(TOKEN_USER));
+        i = InStr(outURL.username, TOKEN_USERPASS);
+        if (i == -1)
+        {
+            outURL.password = "";
+        }
+        else {
+            outURL.password = Mid(outURL.username, i+len(TOKEN_USERPASS));
+            outURL.username = Left(outURL.username, i);
+        }
+    }
+    if (inURL == "") return false;
+    i = InStr(inURL, TOKEN_PATH);
+    if (i == -1) // just protocol://hostname
+    {
+        outURL.hostname = inURL;
+        outURL.hash = "";
+        outURL.query = "";
+        outURL.location = TOKEN_PATH;
+        return true;
+    }
+    if (i == 0) return false; // e.g. http:///, also traps file:/// but we don't give a crap about that
+    outURL.hostname = Left(inURL, i);
+    inURL = mid(inURL, i); // now it contains location(\?query)?(#hash)?
+    i = InStr(inURL, TOKEN_HASH);
+    if (i != -1)
+    {
+        outURL.hash = Mid(inURL, i+len(TOKEN_HASH));
+        inURL = left(inURL, i);
+    }
+    else outURL.hash = "";
+    i = InStr(inURL, TOKEN_QUERY);
+    if (i != -1)
+    {
+        outURL.query = Mid(inURL, i+len(TOKEN_QUERY));
+        inURL = left(inURL, i);
+    }
+    else outURL.query = "";
+    outURL.location = inURL;
+    return true;
+}
+
+/** converts a xURL to a string. bIncludePassword defaults to false */
+static final function string xURLtoString(xURL inURL, optional bool bIncludePassword)
+{
+    local string r;
+    r = inURL.protocol$TOKEN_PROTOCOL;
+    if (inURL.username != "")
+    {
+        r $= inURL.username;
+        if (inURL.password != "" && bIncludePassword) r $= TOKEN_USERPASS@inURL.password;
+        r $= TOKEN_USER;
+    }
+    r $= inURL.hostname;
+    if (inURL.location == "") inURL.location = TOKEN_PATH;
+    r $= inURL.location;
+    if (inURL.query != "") r $= TOKEN_QUERY$inURL.query;
+    if (inURL.hash != "") r $= TOKEN_HASH$inURL.hash;
+    return r;
+}
+
 /**
     replace part of a string
 */
 static final function ReplaceChar(out string instring, string from, string to)
 {
+    //#ifdef UE2
     local int i;
     local string src;
     src = instring;
@@ -92,6 +207,10 @@ static final function ReplaceChar(out string instring, string from, string to)
         i = InStr(src, from);
     }
     instring = instring$src;
+    //#endif
+    //#ifdef UE5
+    //instring = repl(instring, from, to);
+    //#endif
 }
 
 /**

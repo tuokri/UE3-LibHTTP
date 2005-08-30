@@ -19,7 +19,7 @@
     Released under the Lesser Open Unreal Mod License                           <br />
     http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense                <br />
 
-    <!-- $Id: HttpCache.uc,v 1.4 2005/08/22 10:30:53 elmuerte Exp $ -->
+    <!-- $Id: HttpCache.uc,v 1.5 2005/08/30 18:15:29 elmuerte Exp $ -->
 *******************************************************************************/
 
 class HttpCache extends Engine.Info config(HttpCache) ParseConfig;
@@ -142,6 +142,7 @@ function int get(string location)
     local int hash;
     local int idx;
     //TODO: fix location; hostname is case insensitive
+    //TODO: parse URL
     hash = createHash(location);
     idx = findCacheRecord(hash);
     if (idx == -1)
