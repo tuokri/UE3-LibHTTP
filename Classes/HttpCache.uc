@@ -19,21 +19,15 @@
     Released under the Lesser Open Unreal Mod License                           <br />
     http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense                <br />
 
-    <!-- $Id: HttpCache.uc,v 1.5 2005/08/30 18:15:29 elmuerte Exp $ -->
+    <!-- $Id: HttpCache.uc,v 1.6 2005/10/10 12:01:03 elmuerte Exp $ -->
 *******************************************************************************/
 
-class HttpCache extends Engine.Info config(HttpCache) ParseConfig;
+class HttpCache extends Engine.Info config(HttpCache) /*ParseConfig*/;
 
-/**
-    Our HttpSock class, unless it's assigned it will create it's own on the
-    first get() request. So if you have a custom HttpSock class set it before
-    requesting a document.
-*/
-var HttpSock HttpSock;
 /** handle to the last cache hit  */
-var HttpCacheObject LastHit;
+var HttpCacheObject LastHit; //TODO: obsolete?
 
-/**  */
+/** the cache object class to use */
 var class<HttpCacheObject> HttpCacheObjectClass;
 
 /** maximum cache size (entries?) */
@@ -71,7 +65,9 @@ struct CacheInfoRecord
     /** hash used for record info */
     var int Hash;
     /** index in the CacheObjectList */
-    var int colidx;
+    var int colidx; // should be reset on respawn
+    /** last request, will be used for cleanup */
+    var int LastRequest;
 };
 
 /** cache list, each entry is an URL */
@@ -83,12 +79,11 @@ var protected array<HttpCacheObject> CacheObjectList;
 struct CacheRequest
 {
     var HttpSock Socket;
-    var int ID;
+    /** idx of the CacheInfoRecord, if -1 then it's not assigned */
+    var int idx;
 };
 /** running requests */
 var protected array<CacheRequest> Requests;
-/** urls and ids */
-var protected array<string> URLs;
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -104,12 +99,12 @@ delegate OnError(HttpCache Sender, string ErrorMessage, optional string Param1, 
 /**
     Will be called when the operation was completed successfully.
 */
-delegate OnComplete(HttpLink Sender, HttpCacheObject Data, EDataOrigin origin);
+delegate OnComplete(HttpCache Sender, HttpCacheObject Data, EDataOrigin origin);
 
 /**
     failed to complete the request, will be called when everything fails
 */
-delegate OnFail(HttpLink Sender, int id, ECacheFailError reason);
+delegate OnFail(HttpCahce Sender, int id, ECacheFailError reason);
 
 /**
     cache hit
@@ -141,8 +136,19 @@ function int get(string location)
 {
     local int hash;
     local int idx;
-    //TODO: fix location; hostname is case insensitive
-    //TODO: parse URL
+    local HttpUtil.xURL xURL;
+    local HttpCacheObject hco;
+
+    if (!class'HttpUtil'.static.parseUrl(location, xURL))
+    {
+        return -1; //TODO: ERROR
+    }
+    xURL.hostname = Locs(xURL.hostname);
+    if (xURL.username != "")
+    {
+        return -1; //TODO: username thingy not allowed
+    }
+    location = class'HttpUtil'.static.xURLtoString(xURL);
     hash = createHash(location);
     idx = findCacheRecord(hash);
     if (idx == -1)
@@ -150,7 +156,14 @@ function int get(string location)
         idx = CacheList.length;
         CacheList[idx].URL = location;
         CacheList[idx].hash = hash;
+        CacheList[idx].colidx = -1;
     }
+    hco = getCacheObject(idx);
+    // if expired
+      // check if already requesting
+        // spawn request class and validate
+      // call OnComplete
+        // return ??
     return idx;
 }
 
