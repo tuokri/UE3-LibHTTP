@@ -14,7 +14,7 @@
     Released under the Lesser Open Unreal Mod License                           <br />
     http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense
 
-    <!-- $Id: NewsFeed.uc,v 1.12 2005/05/29 20:07:52 elmuerte Exp $ -->
+    <!-- $Id: NewsFeed.uc,v 1.13 2005/11/27 12:11:44 elmuerte Exp $ -->
 *******************************************************************************/
 
 class NewsFeed extends Core.Object PerObjectConfig;
@@ -179,7 +179,7 @@ protected function bool _channel(array<string> Args)
         }
         else if (tag ~= "DESCRIPTION")
         {
-            ChannelDescription = getToNextTag();
+            ChannelDescription = Left(getToNextTag(), 512); // cap to 512 for import bug();
             tag = getTag(args);
         }
         else if (tag ~= "LINK")
@@ -217,7 +217,7 @@ protected function bool _item(array<string> Args)
         }
         else if (tag ~= "DESCRIPTION")
         {
-            Entries[n].Desc = getToNextTag();
+            Entries[n].Desc = Left(getToNextTag(), 512); // cap to 512 for import bug()
             tag = getTag(args);
         }
         if (tag == "") return false;
