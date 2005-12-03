@@ -14,7 +14,7 @@
     Released under the Lesser Open Unreal Mod License                           <br />
     http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense
 
-    <!-- $Id: HttpUtil.uc,v 1.18 2005/08/30 18:15:29 elmuerte Exp $ -->
+    <!-- $Id: HttpUtil.uc,v 1.19 2005/12/03 11:44:25 elmuerte Exp $ -->
 *******************************************************************************/
 
 class HttpUtil extends Core.Object;
@@ -69,6 +69,8 @@ struct xURL
     var string password;
     /** the hostname */
     var string hostname;
+    /** the port number specified in the URL */
+    var int port;
     /** the location field, all from the hostname up to the query or hash string, includes leading / */
     var string location;
     /** the part after the ?, without the leading ? */
@@ -89,6 +91,8 @@ const TOKEN_PROTOCOL = "://";
 const TOKEN_USER = "@";
 /** URL delimiter; to seperate the user and pass from the url */
 const TOKEN_USERPASS = ":";
+/** URL delimiter */
+const TOKEN_PORT = ":";
 
 /**
     Encode special characters, you should not use this function, it's slow and not
@@ -114,7 +118,7 @@ static final function string RawUrlEncode(string instring)
 /** parses the inURL to an xURL structure, return true when succesful */
 static final function bool parseUrl(string inURL, out xURL outURL)
 {
-    local int i;
+    local int i, j;
     i = InStr(inURL, TOKEN_PROTOCOL);
     if (i == -1) return false;
     if (i == 0) return false; // empty protocol
@@ -152,6 +156,21 @@ static final function bool parseUrl(string inURL, out xURL outURL)
     if (i == 0) return false; // e.g. http:///, also traps file:/// but we don't give a crap about that
     outURL.hostname = Left(inURL, i);
     inURL = mid(inURL, i); // now it contains location(\?query)?(#hash)?
+    i = InStr(outURL.hostname, TOKEN_PORT);
+    if (i == 0) return false; // http://:80/ !?
+    outURL.port = -1;
+    if (i > 0)
+    {
+        j = int(mid(outURL.hostname, i+1));
+        if (outURL.port == 0) // invalid port no
+        {
+            return false;
+        }
+        else if (j != getPortByProtocol(outURL.protocol)) {
+            outURL.port = j;
+        }
+        outURL.hostname = Left(outURL.hostname, i);
+    }
     i = InStr(inURL, TOKEN_HASH);
     if (i != -1)
     {
@@ -178,15 +197,43 @@ static final function string xURLtoString(xURL inURL, optional bool bIncludePass
     if (inURL.username != "")
     {
         r $= inURL.username;
-        if (inURL.password != "" && bIncludePassword) r $= TOKEN_USERPASS@inURL.password;
+        if (inURL.password != "" && bIncludePassword) r $= TOKEN_USERPASS$inURL.password;
         r $= TOKEN_USER;
     }
     r $= inURL.hostname;
+    if (inURL.port != -1) r $= TOKEN_PORT$string(inURL.port);
     if (inURL.location == "") inURL.location = TOKEN_PATH;
     r $= inURL.location;
     if (inURL.query != "") r $= TOKEN_QUERY$inURL.query;
     if (inURL.hash != "") r $= TOKEN_HASH$inURL.hash;
     return r;
+}
+
+/** convert a xURL to a location string, just the location+query+hash */
+static final function string xURLtoLocation(xURL inURL, optional bool bIncludePassword)
+{
+    local string r;
+    r = inURL.location;
+    if (inURL.query != "") r $= TOKEN_QUERY$inURL.query;
+    if (inURL.hash != "") r $= TOKEN_HASH$inURL.hash;
+    return r;
+}
+
+/** return the default port based on the protocol */
+static final function int getPortByProtocol(string protocol)
+{
+    switch (protocol)
+    {
+        /*
+        case "ftp":     return 21;
+        case "ssh":     return 22;
+        case "telnet":  return 23;
+        case "gopher":  return 70;
+        */
+        case "http":    return 80;
+        case "https":   return 443;
+    }
+    return 0;
 }
 
 /**

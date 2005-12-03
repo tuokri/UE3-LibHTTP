@@ -65,10 +65,10 @@
     Released under the Lesser Open Unreal Mod License                           <br />
     http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense                <br />
 
-    <!-- $Id: HttpSock.uc,v 1.39 2005/08/22 10:30:53 elmuerte Exp $ -->
+    <!-- $Id: HttpSock.uc,v 1.40 2005/12/03 11:44:25 elmuerte Exp $ -->
 *******************************************************************************/
 
-class HttpSock extends Engine.Info config;
+class HttpSock extends Engine.Info config dependson(HttpUtil);
 
 /** LibHTTP version number */
 const VERSION = 360;
@@ -107,10 +107,8 @@ var protected string HTTPVER;
 //
 ////////////////////////////////////////////////////////////////////////////////
 
-/** the remote host, can be passed in the url */
-var(URL) string sHostname;
-/** the remote port, can be passed in the url */
-var(URL) int iPort;
+/** the URL struct for the current request */
+var(URL) HttpUtil.xURL CurrentURL;
 /** the local port, leave zero to use a random port (adviced) */
 var(URL) int iLocalPort;
 /** the default value for the Accept header, we only support "text / *" */
@@ -127,12 +125,13 @@ enum EAuthMethod
     AM_Basic,
     AM_Digest,
 };
-/** The username and password to use when authentication is required, can be
-    passed in the url. */
-var(Authentication) string sAuthUsername, sAuthPassword;
 /** Authentication method to use when <code>sUsername</code> is set. This will
     automatically be set when a <code>WWW-Authenticate</code> header is received */
 var(Authentication) EAuthMethod AuthMethod;
+/** If username and password have been set automatically retry the request to
+    authenticate. Note: this can only be done in a second try because the
+    authentication method is required. */
+var(Authentication) bool bAutoAuthenticate;
 /** authentication information */
 var(Authentication) array<GameInfo.KeyValuePair> AuthInfo;
 
@@ -219,7 +218,7 @@ var protected HttpUtil Utils;
 var protected HttpResolveCache ResolveCache;
 
 /** the requested location */
-var string RequestLocation;
+var deprecated string RequestLocation;
 /** the request method */
 var string RequestMethod;
 /** the request headers */
@@ -244,9 +243,11 @@ struct RequestHistoryEntry
     /** method used in the request */
     var string Method;
     /** server hostname */
-    var string Hostname;
+    var deprecated string Hostname;
     /** location, can include GET data */
-    var string Location;
+    var deprecated string Location;
+    /** the request URL*/
+    var HttpUtil.xURL URL;
     /** the HTTP response code received */
     var int HTTPresponse;
 };
@@ -280,6 +281,9 @@ var protected int BoundPort;
 var protected bool FollowingRedir, RedirTrap;
 /** @ignore */
 var protected int CurRedir;
+
+/** */
+var protected bool bAuthTrap;
 
 /** @ignore */
 var protected array<string> authBasicLookup;
@@ -400,7 +404,7 @@ delegate bool OnResponseBody(HttpSock Sender, string line)
     Called before the redirection is followed, return false to prevernt following
     the redirection
 */
-delegate bool OnFollowRedirect(HttpSock Sender, string NewLocation)
+delegate bool OnFollowRedirect(HttpSock Sender, HttpUtil.xURL NewLocation)
 {
     return true;
 }
@@ -716,8 +720,8 @@ static function string GetValue(string key, array<GameInfo.KeyValuePair> Info, o
 function string UserAgent()
 {
     local string res;
-    res = "LibHTTP/"$VERSION@"(UnrealEngine2; build "@Level.EngineVersion$"; http://wiki.beyondunreal.com/wiki/LibHTTP ";
-    if (EXTENTION != "") res = res$";"@EXTENTION;
+    res = "LibHTTP/"$VERSION$" (UnrealEngine2; build "@Level.EngineVersion$"; http://wiki.beyondunreal.com/wiki/LibHTTP ";
+    if (EXTENTION != "") res = res$"; "$EXTENTION;
     res = res$")";
     return res;
 }
@@ -775,7 +779,6 @@ event Destroyed()
 */
 protected function bool HttpRequest(string location, string Method)
 {
-    local string tmp;
     if (curState != HTTPState_Closed)
     {
         Logf("HttpSock not closed", Utils.LOGERR, GetEnum(enum'HTTPState', curState));
@@ -789,46 +792,39 @@ protected function bool HttpRequest(string location, string Method)
         return false;
     }
 
-    if (Left(location, 5) ~= "https")
+    if (!Utils.parseUrl(location, CurrentURL))
+    {
+        Logf("Unable to parse request URL", Utils.LOGERR);
+        return false;
+    }
+    //Logf("Parsed URL", Utils.LOGINFO, string(CurrentURL));
+
+    if (CurrentURL.protocol ~= "https")
     {
         Logf("Secure HTTP connections (https://) are not supported", Utils.LOGERR);
         return false;
     }
-
-    if (Left(location, 4) ~= "http") ParseRequestUrl(location, Method);
-    else if (Left(location, 1) != "/")
+    if (CurrentURL.protocol != "http")
     {
-        Logf("Unsupported location", Utils.LOGERR, location);
+        Logf("Only HTTP requests are supported", Utils.LOGERR);
         return false;
-    }
-    else RequestLocation = location;
-    if (sHostname == "")
-    {
-        Logf("No remote hostname", Utils.LOGERR);
-        return false;
-    }
-    if ((iPort <= 0) || (iPort >= 65536))
-    {
-        Logf("Changing remote port to default (80)", Utils.LOGWARN, iPort);
-        iPort = 80;
     }
     // Add default headers
-    AddHeader("Host", sHostname);
+    AddHeader("Host", CurrentURL.hostname);
     AddHeader("User-Agent", UserAgent());
     AddHeader("Connection", "close");
     AddHeader("Accept", DefaultAccept);
     if (IsAuthMethodSupported(AuthMethod))
     {
-        AddHeader("Authorization", genAuthorization(AuthMethod, sAuthUsername, sAuthPassword, AuthInfo));
+        //TODO: validate authentication info (e.g. sAuthUsername != "")
+        AddHeader("Authorization", genAuthorization(AuthMethod, CurrentURL.username, CurrentURL.password, AuthInfo));
     }
-    if ((Method ~= HTTP_POST) && (InStr(RequestLocation, "?") > -1 ))
+    if ((Method ~= HTTP_POST) && (CurrentURL.query != ""))
     {
         if (GetRequestHeader("Content-Type", "application/x-www-form-urlencoded") ~= "application/x-www-form-urlencoded")
         {
-            Divide(RequestLocation, "?", RequestLocation, tmp);
-            if (RequestData.length == 0) RequestData.length = 1;
-            if (Len(RequestData[0]) > 0) tmp = "&"$tmp;
-            RequestData[0] = RequestData[0]$tmp;
+            if (Len(RequestData[0]) > 0) RequestData[0] = RequestData[0]$"&";
+            RequestData[0] = RequestData[0]$CurrentURL.query;
             AddHeader("Content-Type", "application/x-www-form-urlencoded"); // make sure it's set
         }
         else {
@@ -866,9 +862,10 @@ function Logf(coerce string message, optional int level, optional coerce string 
     }
 }
 
-/** Parses the fully qualified URL */
-protected function ParseRequestUrl(string location, string Method)
+/** Parses the fully qualified URL. deprecated using httputil.parseUrl instead */
+/*deprecated*/ protected function ParseRequestUrl(string location, string Method)
 {
+    /*
     local int i, j;
     location = Mid(location, InStr(location, ":")+3); // trim leading http://
     i = InStr(location, "/");
@@ -902,6 +899,7 @@ protected function ParseRequestUrl(string location, string Method)
     }
     sHostname = location;
     Logf("ParseRequestUrl", Utils.LOGINFO, "sHostname", sHostname);
+    */
 }
 
 /** start the download */
@@ -910,9 +908,8 @@ protected function bool OpenConnection()
     local int i;
     i = RequestHistory.Length;
     RequestHistory.Length = i+1;
-    RequestHistory[i].Hostname = sHostname;
+    RequestHistory[i].URL = CurrentURL;
     RequestHistory[i].Method = RequestMethod;
-    RequestHistory[i].Location = RequestLocation;
     RequestHistory[i].HTTPresponse = 0; // none yet
 
     if (!CreateSocket()) return false;
@@ -942,11 +939,11 @@ protected function bool OpenConnection()
         }
     }
     else {
-        if (!CachedResolve(sHostname))
+        if (!CachedResolve(CurrentURL.hostname))
         {
             curState = HTTPState_Resolving;
-            ResolveHostname = sHostname;
-            HttpLink.Resolve(sHostname);
+            ResolveHostname = CurrentURL.hostname;
+            HttpLink.Resolve(ResolveHostname);
         }
     }
     return true;
@@ -973,7 +970,10 @@ function InternalResolved( InternetLink.IpAddr Addr , optional bool bDontCache)
     if (!bDontCache) ResolveCache.AddCacheEntry(ResolveHostname, Addr);
     LocalLink.Addr = Addr.Addr;
     if (bUseProxy) LocalLink.Port = iProxyPort;
-        else LocalLink.Port = iPort;
+    else {
+        if (CurrentURL.port != -1) LocalLink.Port = CurrentURL.port;
+        else LocalLink.Port = Utils.getPortByProtocol(CurrentURL.protocol);
+    }
     if (!OnResolved(self, ResolveHostname, Addr))
     {
         Logf("Request aborted", Utils.LOGWARN, "OnResolved() == false");
@@ -989,8 +989,8 @@ function InternalResolved( InternetLink.IpAddr Addr , optional bool bDontCache)
 
     if (BoundPort > 0) Logf("Local port succesfully bound", Utils.LOGINFO, BoundPort);
     else {
-        Logf("Error binding local port", Utils.LOGERR, BoundPort );
         CloseSocket();
+        Logf("Error binding local port", Utils.LOGERR, BoundPort );
         return;
     }
 
@@ -1010,9 +1010,9 @@ function InternalResolved( InternetLink.IpAddr Addr , optional bool bDontCache)
     Logf("Opening connection", Utils.LOGINFO);
     if (!HttpLink.Open(LocalLink))
     {
-        Logf("Open() failed", Utils.LOGERR, HttpLink.GetLastError());
         curState = HTTPState_Closed;
         OnConnectError(self);
+        Logf("Open() failed", Utils.LOGERR, HttpLink.GetLastError());
     }
 }
 
@@ -1020,8 +1020,8 @@ function InternalResolved( InternetLink.IpAddr Addr , optional bool bDontCache)
 function ResolveFailed()
 {
     curState = HTTPState_Closed;
-    Logf("Resolve failed", Utils.LOGERR, ResolveHostname);
     OnResolveFailed(self, ResolveHostname);
+    Logf("Resolve failed", Utils.LOGERR, ResolveHostname);
 }
 
 /** timer is used for the conenection timeout. */
@@ -1030,10 +1030,10 @@ function Timer()
     if (curState == HTTPState_Connecting)
     {
         bTimeout = true;
-        Logf("Connection timeout", Utils.LOGERR, fConnectTimout);
         CloseSocket();
         curState = HTTPState_Closed;
         OnConnectionTimeout(self);
+        Logf("Connection timeout", Utils.LOGERR, fConnectTimout);
     }
 }
 
@@ -1047,8 +1047,8 @@ function Opened()
     curState = HTTPState_SendingRequest;
     inBuffer = ""; // clear buffer
     outBuffer = ""; // clear buffer
-    if (bUseProxy) SendData(RequestMethod@"http://"$sHostname$":"$string(iPort)$RequestLocation@"HTTP/"$HTTPVER);
-        else SendData(RequestMethod@RequestLocation@"HTTP/"$HTTPVER);
+    if (bUseProxy) SendData(RequestMethod@Utils.xURLtoString(CurrentURL)@"HTTP/"$HTTPVER);
+        else SendData(RequestMethod@Utils.xURLtoLocation(CurrentURL)@"HTTP/"$HTTPVER);
     totalDataSize = DataSize(RequestData);
     if ((RequestMethod ~= HTTP_POST) || (RequestMethod ~= HTTP_PUT))
     {
@@ -1061,7 +1061,7 @@ function Opened()
 
     if (bSendCookies && (Cookies != none))
     {
-        AddHeader("Cookie", Cookies.GetCookieString(sHostname, RequestLocation, now()));
+        AddHeader("Cookie", Cookies.GetCookieString(CurrentURL.hostname, CurrentURL.location, now()));
     }
     else RemoveHeader("Cookie"); // cookies should be set via the HttpCookie class
 
@@ -1086,6 +1086,7 @@ function Opened()
     FollowingRedir = false;
     RedirTrap = false;
     bIsChunked = false;
+    bAuthTrap = false;
     chunkedCounter = 0;
     curState = HTTPState_WaitingForResponse;
     Logf("Request send", Utils.LOGINFO);
@@ -1097,7 +1098,13 @@ function Closed()
     local int i;
     FollowingRedir = RedirTrap;
     if (Len(inBuffer) > 0) ProcInput(inBuffer);
-    if (!FollowingRedir)
+    if (bAutoAuthenticate && bAuthTrap && IsAuthMethodSupported(AuthMethod))
+    {
+        Logf("Retrying with authentication information", Utils.LOGINFO);
+        AddHeader("Authorization", genAuthorization(AuthMethod, CurrentURL.username, CurrentURL.password, AuthInfo));
+        OpenConnection();
+    }
+    else if (!FollowingRedir)
     {
         Logf("Connection closed", Utils.LOGINFO);
         curState = HTTPState_Closed;
@@ -1111,9 +1118,9 @@ function Closed()
         CurRedir++;
         if (iMaxRedir >= CurRedir) Logf("MaxRedir reached", Utils.LOGWARN, iMaxRedir, CurRedir);
         i = RequestHistory.Length-1;
-        if (!OnFollowRedirect(self, "http://"$sHostname$RequestLocation)) return;
-        AddHeader("Host", sHostname); // make sure the new host is set
-        AddHeader("Referer", "http://"$RequestHistory[i].Hostname$RequestHistory[i].Location);
+        if (!OnFollowRedirect(self, CurrentURL)) return;
+        AddHeader("Host", CurrentURL.hostname); // make sure the new host is set
+        AddHeader("Referer", Utils.xURLtoString(RequestHistory[i].URL));
         OpenConnection();
     }
 }
@@ -1227,7 +1234,7 @@ protected function ProcHeaders()
         {
             if (bProcCookies && (Cookies != none))
             {
-                Cookies.ParseCookieData(rhs, sHostname, RequestLocation, now(), true, TZoffset);
+                Cookies.ParseCookieData(rhs, CurrentURL.hostname, CurrentURL.location, now(), true, TZoffset);
             }
         }
         else if (lhs ~= "date")
@@ -1264,6 +1271,8 @@ protected function ProcHeaders()
 protected function bool ShouldFollowRedirect(int retc, string method)
 {
     local int i;
+    local string tmp;
+
     if (!bFollowRedirect) return false;
     if ((method == HTTP_HEAD) || (method == HTTP_TRACE)) return false;
     if (iMaxRedir < CurRedir) return false;
@@ -1296,8 +1305,20 @@ protected function bool ShouldFollowRedirect(int retc, string method)
             {
                 if (left(ReturnHeaders[i], 9) ~= "location:")
                 {
-                    RequestLocation = Utils.Trim(mid(ReturnHeaders[i], 9));
-                    if (Left(RequestLocation, 4) ~= "http") ParseRequestUrl(RequestLocation, RequestMethod);
+                    tmp = Utils.Trim(mid(ReturnHeaders[i], 9));
+                    if (Left(tmp, 1) == "/")
+                    {   // a dirty trick
+                        CurrentURL.location = tmp;
+                        CurrentURL.query = "";
+                        CurrentURL.hash = "";
+                        tmp = Utils.xURLtoString(CurrentURL);
+                    }
+
+                    if (!Utils.parseUrl(tmp, CurrentURL))
+                    {
+                        Logf("Invalid redirection URL", Utils.LOGWARN, tmp);
+                        return false;
+                    }
                     RedirTrap = true;
                     break;
                 }
@@ -1391,7 +1412,23 @@ protected function ProccessWWWAuthenticate(string HeaderData, bool bProxyAuth)
     else {
         if (!IsAuthMethodSupported(AuthMethod))
             Logf("Unsupported WWW-Authenticate method required", Utils.LOGWARN, GetEnum(enum'EAuthMethod', AuthMethod));
-        else if (LastStatus == 401) OnRequireAuthorization(self, AuthMethod, AuthInfo);
+        else if (LastStatus == 401)
+        {
+            OnRequireAuthorization(self, AuthMethod, AuthInfo);
+            bAuthTrap = (CurrentURL.username != "");
+            if (RequestHistory.length > 1)
+            {
+                i = RequestHistory.length-1;
+                if ((RequestHistory[i].URL.username == RequestHistory[i-1].URL.username)
+                    &&
+                    (RequestHistory[i].URL.password == RequestHistory[i-1].URL.password)
+                    )
+                {
+                    Logf("No auth retry with the same login info", Utils.LOGINFO);
+                    bAuthTrap = false;
+                }
+            }
+        }
     }
 }
 
@@ -1423,14 +1460,15 @@ protected function string genBasicAuthorization(string Username, string Password
 protected function string genDigestAuthorization(string Username, string Password, array<GameInfo.KeyValuePair> Info)
 {
     local string a1, a2, qop, alg, cnonce;
-    local string result, tmp;
+    local string result, tmp, rLoc;
 
     result = "Digest username=\""$Username$"\", ";
     tmp = GetValue("realm", info);
     if (tmp != "") Result = result$"realm=\""$GetValue("realm", Info)$"\", ";
     tmp = GetValue("nonce", info);
     if (tmp != "") result = result$"nonce=\""$tmp$"\", ";
-    result = result$"uri=\""$RequestLocation$"\", ";
+    rLoc = Utils.xURLtoLocation(CurrentURL);
+    result = result$"uri=\""$rLoc$"\", ";
     tmp = GetValue("opaque", info);
     if (tmp != "") result = result$"opaque=\""$tmp$"\", ";
 
@@ -1455,11 +1493,11 @@ protected function string genDigestAuthorization(string Username, string Passwor
             a1 = a1$":"$GetValue("nonce", info)$":"$cnonce;
         }
         // A2
-        if (qop == "" || qop ~= "auth") a2 = Utils.MD5String(Caps(RequestMethod)$":"$RequestLocation);
+        if (qop == "" || qop ~= "auth") a2 = Utils.MD5String(Caps(RequestMethod)$":"$rLoc);
         else if (qop ~= "auth-int")
         {
             a2 = Utils.MD5Stringarray(RequestData, CRLF);
-            a2 = Utils.MD5String(Caps(RequestMethod)$":"$RequestLocation$":"$a2);
+            a2 = Utils.MD5String(Caps(RequestMethod)$":"$rLoc$":"$a2);
         }
         // KD
         if (qop == "") tmp = Utils.MD5String(a1$":"$GetValue("nonce", info)$":"$a2);
@@ -1496,4 +1534,5 @@ defaultproperties
     iMaxIterationsPerTick=32
     iMaxBytesPerTick=4096
     AuthMethod=AM_None
+    bAutoAuthenticate=true
 }
