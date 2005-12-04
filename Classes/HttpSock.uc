@@ -47,14 +47,19 @@
     * Empty multipart items are never added                                     <br />
     * Made more support functions public                                        <br />
                                                                                 <br />
-    New in version 360:                                                         <br />
+    New in version 400:                                                         <br />
     * redone the redirection processing, now with better support for each
         redirection type.                                                       <br />
     * new variable bRfcCompliantRedirect, set this to false for the old, and
         bad, redirection handling on 301/302 headers (e.g. transform POST into
         GET)                                                                    <br />
     * moved DNS caching to a global object, multiple HttpSock classes now use
-        the same cache data
+        the same cache data                                                     <br />
+    * added automatic retrying when authentication data is provided in the url,
+        the prefered method for using authenticated locations is to provide the
+        username and password in the url or set them in the currenturl after the
+        OnRequireAuthorization was received.                                    <br />
+    * ClearRequestData() will now automatically clear authentication information
                                                                                 <br />
     Dcoumentation and Information:
         http://wiki.beyondunreal.com/wiki/LibHTTP                               <br />
@@ -65,13 +70,13 @@
     Released under the Lesser Open Unreal Mod License                           <br />
     http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense                <br />
 
-    <!-- $Id: HttpSock.uc,v 1.40 2005/12/03 11:44:25 elmuerte Exp $ -->
+    <!-- $Id: HttpSock.uc,v 1.41 2005/12/04 22:29:53 elmuerte Exp $ -->
 *******************************************************************************/
 
 class HttpSock extends Engine.Info config dependson(HttpUtil);
 
 /** LibHTTP version number */
-const VERSION = 360;
+const VERSION = 400;
 /**
     If you make a custom build of this package, or subclass this class then
     please change the following constant to countain your "extention" name. This
@@ -217,8 +222,6 @@ var protected HttpUtil Utils;
 /** cache object with hostname resolves */
 var protected HttpResolveCache ResolveCache;
 
-/** the requested location */
-var deprecated string RequestLocation;
 /** the request method */
 var string RequestMethod;
 /** the request headers */
@@ -278,7 +281,7 @@ var protected InternetLink.IpAddr LocalLink;
 var protected int BoundPort;
 
 /** @ignore */
-var protected bool FollowingRedir, RedirTrap;
+var protected bool FollowingRedir;
 /** @ignore */
 var protected int CurRedir;
 
@@ -432,14 +435,20 @@ delegate OnRequireProxyAuthorization(HttpSock Sender, EAuthMethod method, array<
 /**
     This function will clear the previous request data. You may want to use this
     when you do a new request with the same socket. Previous set headers won't
-    be unset automatically. <br />
-    Note, this doesn't reset authentication information. To reset authentication
-    data simply set the AuthMethod to AM_None.
+    be unset automatically.
 */
-function ClearRequestData()
+function ClearRequestData(optional bool bDontClearAuth)
 {
     RequestData.length = 0;
     RequestHeaders.Length = 0;
+    if (!bDontClearAuth)
+    {
+        AuthMethod = AM_None;
+        AuthInfo.Length = 0;
+        CurrentURL.username = "";
+        CurrentURL.password = "";
+        RemoveHeader("Authorization");
+    }
 }
 
 /**
@@ -792,6 +801,13 @@ protected function bool HttpRequest(string location, string Method)
         return false;
     }
 
+    //TODO: make sure some things are unset while user\pass isn't?!
+    CurrentURL.hash = "";
+    CurrentURL.hostname = "";
+    CurrentURL.location = "";
+    CurrentURL.port = -1;
+    CurrentURL.protocol = "";
+    CurrentURL.query = "";
     if (!Utils.parseUrl(location, CurrentURL))
     {
         Logf("Unable to parse request URL", Utils.LOGERR);
@@ -814,7 +830,8 @@ protected function bool HttpRequest(string location, string Method)
     AddHeader("User-Agent", UserAgent());
     AddHeader("Connection", "close");
     AddHeader("Accept", DefaultAccept);
-    if (IsAuthMethodSupported(AuthMethod))
+
+    if ((AuthMethod != AM_None) && IsAuthMethodSupported(AuthMethod) && (CurrentURL.username != ""))
     {
         //TODO: validate authentication info (e.g. sAuthUsername != "")
         AddHeader("Authorization", genAuthorization(AuthMethod, CurrentURL.username, CurrentURL.password, AuthInfo));
@@ -862,46 +879,6 @@ function Logf(coerce string message, optional int level, optional coerce string 
     }
 }
 
-/** Parses the fully qualified URL. deprecated using httputil.parseUrl instead */
-/*deprecated*/ protected function ParseRequestUrl(string location, string Method)
-{
-    /*
-    local int i, j;
-    location = Mid(location, InStr(location, ":")+3); // trim leading http://
-    i = InStr(location, "/");
-    if (i > 0)
-    {
-        RequestLocation = Mid(location, i);
-        location = Left(location, i);
-    }
-    else RequestLocation = "/"; // get index
-    Logf("ParseRequestUrl", Utils.LOGINFO, "RequestLocation", RequestLocation);
-    i = InStr(location, "@");
-    if (i > -1)
-    {
-        sAuthUsername = Left(location, i);
-        location = Mid(location, i+1);
-        j = InStr(sAuthUsername, ":");
-        if (j > -1)
-        {
-            sAuthPassword = Mid(sAuthUsername, j+1);
-            sAuthUsername = Left(sAuthUsername, j);
-            Logf("ParseRequestUrl", Utils.LOGINFO, "sAuthPassword", sAuthPassword);
-        }
-        Logf("ParseRequestUrl", Utils.LOGINFO, "sAuthUsername", sAuthUsername);
-    }
-    i = InStr(location, ":");
-    if (i > -1)
-    {
-        iPort = int(Mid(location, i+1));
-        Logf("ParseRequestUrl", Utils.LOGINFO, "iPort", iPort);
-        location = Left(location, i);
-    }
-    sHostname = location;
-    Logf("ParseRequestUrl", Utils.LOGINFO, "sHostname", sHostname);
-    */
-}
-
 /** start the download */
 protected function bool OpenConnection()
 {
@@ -926,7 +903,7 @@ protected function bool OpenConnection()
             Logf("Chaning proxy port to default (80)", Utils.LOGWARN, iProxyPort);
             iProxyPort = 80;
         }
-        if (ProxyAuthMethod != AM_Unknown)
+        if ((ProxyAuthMethod != AM_Unknown) && (ProxyAuthMethod != AM_None))
         {
             AddHeader("Proxy-Authorization", genAuthorization(ProxyAuthMethod, sProxyUser, sProxyPass, ProxyAuthInfo));
         }
@@ -1084,7 +1061,6 @@ function Opened()
     ReturnData.length = 0;
     procHeader = true;
     FollowingRedir = false;
-    RedirTrap = false;
     bIsChunked = false;
     bAuthTrap = false;
     chunkedCounter = 0;
@@ -1096,7 +1072,6 @@ function Opened()
 function Closed()
 {
     local int i;
-    FollowingRedir = RedirTrap;
     if (Len(inBuffer) > 0) ProcInput(inBuffer);
     if (bAutoAuthenticate && bAuthTrap && IsAuthMethodSupported(AuthMethod))
     {
@@ -1220,7 +1195,6 @@ protected function ProcHeaders()
     {
         Logf("Redirecting", Utils.LOGINFO, LastStatus);
         FollowingRedir = true;
-        RedirTrap = false;
     }
     RequestHistory[RequestHistory.Length-1].HTTPresponse = LastStatus;
                    // code  description  http/1.1
@@ -1319,7 +1293,6 @@ protected function bool ShouldFollowRedirect(int retc, string method)
                         Logf("Invalid redirection URL", Utils.LOGWARN, tmp);
                         return false;
                     }
-                    RedirTrap = true;
                     break;
                 }
             }
@@ -1330,7 +1303,6 @@ protected function bool ShouldFollowRedirect(int retc, string method)
                 if (left(ReturnHeaders[i], 9) ~= "location:")
                 {
                     // TODO: temp proxy
-                    RedirTrap = true;
                     break;
                 }
             }
