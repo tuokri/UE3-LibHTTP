@@ -14,7 +14,7 @@
     Released under the Lesser Open Unreal Mod License                           <br />
     http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense
 
-    <!-- $Id: NewsFeed.uc,v 1.13 2005/11/27 12:11:44 elmuerte Exp $ -->
+    <!-- $Id: NewsFeed.uc,v 1.14 2005/12/05 10:03:41 elmuerte Exp $ -->
 *******************************************************************************/
 
 class NewsFeed extends Core.Object PerObjectConfig;
@@ -50,6 +50,9 @@ struct RDFRentry
 };
 /** the current content */
 var(RSSContent) config array<RDFRentry> Entries;
+
+/** if set to false it will not strip the entry size to 512 bytes */
+var bool bSizeBugFix;
 
 /** @ignore */
 var protected array<string> data, line;
@@ -127,10 +130,19 @@ protected function string getTag(out array<string> Args)
 protected function string getToNextTag()
 {
     local string res, s;
+    local bool cdata;
+
+    cdata = false;
     s = getWord();
+    if (Left(s, 9) == "<![CDATA[")
+    {
+        cdata = true;
+        s = Mid(s, 9);
+    }
     while (Left(s, 1) != "<")
     {
         if (res != "") res = res$" ";
+        if (cdata && (right(s, 3) == "]]>")) s = Left(s, Len(s)-3);
         res = res$s;
         s = getWord();
         if (s == "") return "";
@@ -179,7 +191,8 @@ protected function bool _channel(array<string> Args)
         }
         else if (tag ~= "DESCRIPTION")
         {
-            ChannelDescription = Left(getToNextTag(), 512); // cap to 512 for import bug();
+            ChannelDescription = getToNextTag();
+            if (bSizeBugFix) ChannelDescription = Left(ChannelDescription, 512);
             tag = getTag(args);
         }
         else if (tag ~= "LINK")
@@ -217,10 +230,16 @@ protected function bool _item(array<string> Args)
         }
         else if (tag ~= "DESCRIPTION")
         {
-            Entries[n].Desc = Left(getToNextTag(), 512); // cap to 512 for import bug()
+            Entries[n].Desc = getToNextTag();
+            if (bSizeBugFix) Entries[n].Desc = Left(Entries[n].Desc, 512);
             tag = getTag(args);
         }
         if (tag == "") return false;
     }
     return true;
+}
+
+defaultproperties
+{
+    bSizeBugFix=true
 }

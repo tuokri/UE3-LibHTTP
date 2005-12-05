@@ -70,7 +70,7 @@
     Released under the Lesser Open Unreal Mod License                           <br />
     http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense                <br />
 
-    <!-- $Id: HttpSock.uc,v 1.41 2005/12/04 22:29:53 elmuerte Exp $ -->
+    <!-- $Id: HttpSock.uc,v 1.42 2005/12/05 10:03:41 elmuerte Exp $ -->
 *******************************************************************************/
 
 class HttpSock extends Engine.Info config dependson(HttpUtil);
@@ -801,7 +801,6 @@ protected function bool HttpRequest(string location, string Method)
         return false;
     }
 
-    //TODO: make sure some things are unset while user\pass isn't?!
     CurrentURL.hash = "";
     CurrentURL.hostname = "";
     CurrentURL.location = "";
@@ -833,7 +832,6 @@ protected function bool HttpRequest(string location, string Method)
 
     if ((AuthMethod != AM_None) && IsAuthMethodSupported(AuthMethod) && (CurrentURL.username != ""))
     {
-        //TODO: validate authentication info (e.g. sAuthUsername != "")
         AddHeader("Authorization", genAuthorization(AuthMethod, CurrentURL.username, CurrentURL.password, AuthInfo));
     }
     if ((Method ~= HTTP_POST) && (CurrentURL.query != ""))

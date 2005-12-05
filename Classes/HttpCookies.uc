@@ -11,7 +11,7 @@
     Released under the Lesser Open Unreal Mod License                           <br />
     http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense
 
-    <!-- $Id: HttpCookies.uc,v 1.13 2005/05/29 20:07:52 elmuerte Exp $ -->
+    <!-- $Id: HttpCookies.uc,v 1.14 2005/12/05 10:03:41 elmuerte Exp $ -->
 *******************************************************************************/
 
 class HttpCookies extends Core.Object config parseconfig;
@@ -48,7 +48,7 @@ event Created()
     if (Utils == none) Utils = new class'HttpUtil';
     bDirty = false;
     // remove session cookies
-    for (i = CookieData.length-1; i > 0; i--)
+    for (i = CookieData.length-1; i >= 0; i--)
     {
         if (CookieData[i].Expires <= 0)
         {
