@@ -2,65 +2,7 @@
     HttpSock                                                                    <br />
     Base of [[LibHTTP]] this implements the main network methods for connecting
     to a webserver and retreiving data from it. Binary data is not supported.   <br />
-                                                                                <br />
-    Features:                                                                   <br />
-    * GET/POST support                                                          <br />
-    * Supports transparent redirecting                                          <br />
-    * Basic Authentication support                                              <br />
-    * Header management                                                         <br />
-    * Cookie management                                                         <br />
-    * Support for HTTP Proxy                                                    <br />
-                                                                                <br />
-    New in version 200:                                                         <br />
-    * Supports HTTP 1.1                                                         <br />
-    * Cached resolves                                                           <br />
-    * Redirection history                                                       <br />
-    * Chuncked encoding automatically decoded                                   <br />
-    * Added connection timeout                                                  <br />
-    * More delegates                                                            <br />
-                                                                                <br />
-    new in version 300:                                                         <br />
-    * bug fixes                                                                 <br />
-    * Improved easy of use:
-        get(), post(), head()                                                   <br />
-    * Support for <code>multipart/form-data</code> POST data                    <br />
-    * Two different transfer modes: Normal and Fast (tries to download as much
-        data as allowed within a single tick)                                   <br />
-    * Support for proxy authentication, you get the best performance by
-        setting the right user/pass in the beginning. Otherwise the code using
-        this library will have to do additional processing when the proxy
-        user and pass are not accepted.                                         <br />
-    * Better support for various authentication methods                         <br />
-    * Support for digest authentication (more secure HTTP authentication). When
-        digest is used instead of basic the client has to make 2 requests. With
-        the first request the server will send information needed to construct
-        the response. Basic authentication doesn't have this issue.             <br />
-    * Cookie storage class will automatically be created when
-        <code>bProcCookies</code> or <code>bSendCookies</code> is set to true
-        (and the cookies hasn't been set)                                       <br />
-                                                                                <br />
-    New in version 350:                                                         <br />
-    * All delegates contains a HttpSock Sender argument                         <br />
-    * New function string
-        randString(optional int length, optional coerce string prefix)          <br />
-    * MultiPart divider string is now more unique                               <br />
-    * Empty multipart items are never added                                     <br />
-    * Made more support functions public                                        <br />
-                                                                                <br />
-    New in version 400:                                                         <br />
-    * redone the redirection processing, now with better support for each
-        redirection type.                                                       <br />
-    * new variable bRfcCompliantRedirect, set this to false for the old, and
-        bad, redirection handling on 301/302 headers (e.g. transform POST into
-        GET)                                                                    <br />
-    * moved DNS caching to a global object, multiple HttpSock classes now use
-        the same cache data                                                     <br />
-    * added automatic retrying when authentication data is provided in the url,
-        the prefered method for using authenticated locations is to provide the
-        username and password in the url or set them in the currenturl after the
-        OnRequireAuthorization was received.                                    <br />
-    * ClearRequestData() will now automatically clear authentication information
-                                                                                <br />
+
     Dcoumentation and Information:
         http://wiki.beyondunreal.com/wiki/LibHTTP                               <br />
                                                                                 <br />
@@ -70,7 +12,7 @@
     Released under the Lesser Open Unreal Mod License                           <br />
     http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense                <br />
 
-    <!-- $Id: HttpSock.uc,v 1.42 2005/12/05 10:03:41 elmuerte Exp $ -->
+    <!-- $Id: HttpSock.uc,v 1.43 2005/12/07 09:41:28 elmuerte Exp $ -->
 *******************************************************************************/
 
 class HttpSock extends Engine.Info config dependson(HttpUtil);
@@ -182,7 +124,8 @@ var(Proxy) globalconfig string sProxyUser, sProxyPass;
 var(Proxy) EAuthMethod ProxyAuthMethod;
 /** authentication information */
 var(Proxy) array<GameInfo.KeyValuePair> ProxyAuthInfo;
-/** will be set to true in case of a  */
+
+/** will be set to true in case of a ... */
 var protected bool bTempProxyOverride;
 
 /**
@@ -268,41 +211,46 @@ var protected float StartRequestTime;
 
 /** the link class to use */
 var protected class<HttpLink> HttpLinkClass;
-/** @ignore */
+/** handle to the HttpLink */
 var protected HttpLink HttpLink;
-/** @ignore */
+/** i/o buffers */
 var protected string inBuffer, outBuffer;
-/** @ignore */
+/** true if headers are being processed */
 var protected bool procHeader;
 
-/** @ignore */
+/** local link address */
 var protected InternetLink.IpAddr LocalLink;
 /** the port we are connected to */
 var protected int BoundPort;
 
-/** @ignore */
+/** true if a redirection should be followed */
 var protected bool FollowingRedir;
-/** @ignore */
+/** current number of redirections */
 var protected int CurRedir;
 
-/** */
+/** true if an authentication retry should happen */
 var protected bool bAuthTrap;
 
-/** @ignore */
+/** Base64 encoding lookup table */
 var protected array<string> authBasicLookup;
 
 /** Timezone Offset, dynamically calculated from the server's time */
 var protected int TZoffset;
 
-/** @ignore */
+/** Multipart boundary string, used to split fields */
 var protected string MultiPartBoundary;
 
-/** @ignore */
-var protected int chunkedCounter; // to count the current chunk
-/** @ignore */
-var protected bool bIsChunked; // if Transfer-Encoding: chunked
-/** @ignore */
+/** bytes left in the chunk */
+var protected int chunkedCounter;
+/** true if the data is chunked (e.g. Transfer-Encoding: chunked )  */
+var protected bool bIsChunked;
+/** true in case of a connection timeout */
 var protected bool bTimeout;
+
+/** temporary proxy configuration */
+var protected HttpUtil.xURL TempProxy;
+/** if true use the TempProxy */
+var protected bool bUseTempProxy;
 
 
 enum HTTPState
@@ -319,11 +267,6 @@ var HTTPState curState;
 
 /** the hostname being resolved, used to add to the resolve cache */
 var protected string ResolveHostname;
-/**
-    received cookie data, will be postponed until the whole header has been
-    received (DEPRECATED)
-*/
-var deprecated protected array<string> PendingCookieData;
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -846,7 +789,7 @@ protected function bool HttpRequest(string location, string Method)
             Logf("POST data collision, data on URL left in tact", Utils.LOGWARN);
         }
     }
-    // start resolve
+    bUseTempProxy = false;
     CurRedir = 0;
     CRLF = Chr(13)$Chr(10);
     if (bProcCookies || bSendCookies)
@@ -889,7 +832,22 @@ protected function bool OpenConnection()
 
     if (!CreateSocket()) return false;
 
-    if (bUseProxy)
+    if (bUseTempProxy)
+    {
+        if ((TempProxy.port <= 0) || (TempProxy.port >= 65536))
+        {
+            Logf("Changing temp proxy port to default (80)", Utils.LOGWARN, TempProxy.port);
+            TempProxy.port = 80;
+        }
+        AddHeader("Proxy-Connection", "close");
+        if (!CachedResolve(TempProxy.hostname))
+        {
+            curState = HTTPState_Resolving;
+            ResolveHostname = TempProxy.hostname;
+            HttpLink.Resolve(TempProxy.hostname);
+        }
+    }
+    else if (bUseProxy)
     {
         if (sProxyHost == "")
         {
@@ -898,7 +856,7 @@ protected function bool OpenConnection()
         }
         if ((iProxyPort <= 0) || (iProxyPort >= 65536))
         {
-            Logf("Chaning proxy port to default (80)", Utils.LOGWARN, iProxyPort);
+            Logf("Changing proxy port to default (80)", Utils.LOGWARN, iProxyPort);
             iProxyPort = 80;
         }
         if ((ProxyAuthMethod != AM_Unknown) && (ProxyAuthMethod != AM_None))
@@ -944,7 +902,8 @@ function InternalResolved( InternetLink.IpAddr Addr , optional bool bDontCache)
     Logf("Host resolved succesfully", Utils.LOGINFO, ResolveHostname);
     if (!bDontCache) ResolveCache.AddCacheEntry(ResolveHostname, Addr);
     LocalLink.Addr = Addr.Addr;
-    if (bUseProxy) LocalLink.Port = iProxyPort;
+    if (bUseTempProxy) LocalLink.Port = TempProxy.port;
+    else if (bUseProxy) LocalLink.Port = iProxyPort;
     else {
         if (CurrentURL.port != -1) LocalLink.Port = CurrentURL.port;
         else LocalLink.Port = Utils.getPortByProtocol(CurrentURL.protocol);
@@ -981,6 +940,7 @@ function InternalResolved( InternetLink.IpAddr Addr , optional bool bDontCache)
     OnPreConnect(self);
     curState = HTTPState_Connecting;
     bTimeout = false;
+    bUseTempProxy = false;
     SetTimer(fConnectTimout, false);
     Logf("Opening connection", Utils.LOGINFO);
     if (!HttpLink.Open(LocalLink))
@@ -1189,6 +1149,13 @@ protected function ProcHeaders()
     // first entry is the HTTP response code
     Split(ReturnHeaders[0], " ", tmp);
     LastStatus = int(tmp[1]);
+    // squad response code
+    if (Utils.HTTPResponseCode(LastStatus) == "")
+    {
+        LastStatus = (LastStatus/100)*100;
+        if ((LastStatus > 500) || (LastStatus < 100)) LastStatus = 500;
+        Logf("Received unknown HTTP response code", Utils.LOGINFO, tmp[1], LastStatus);
+    }
     if (ShouldFollowRedirect(LastStatus, RequestMethod))
     {
         Logf("Redirecting", Utils.LOGINFO, LastStatus);
@@ -1251,8 +1218,18 @@ protected function bool ShouldFollowRedirect(int retc, string method)
     switch (retc)
     {
         case 300: // "Multiple Choices"; find prefered location
-            // TODO:
-            return true;
+            for (i = 0; i < ReturnHeaders.length; i++)
+            {
+                if (left(ReturnHeaders[i], 9) ~= "location:")
+                {
+                    break;
+                }
+            }
+            if (i == ReturnHeaders.length)
+            {
+                Logf("Did not receive a prefered choice for HTTP code 300", Utils.LOGINFO, RequestMethod);
+                return false;
+            }
         case 303: // "See Other"; transform into POST into GET
             if (RequestMethod != HTTP_GET) // redir is always a GET
             {
@@ -1291,20 +1268,31 @@ protected function bool ShouldFollowRedirect(int retc, string method)
                         Logf("Invalid redirection URL", Utils.LOGWARN, tmp);
                         return false;
                     }
-                    break;
+                    return true;
                 }
             }
-            return true;
+            return false;
         case 305: // "Use Proxy"; proxy host is in location
             for (i = 0; i < ReturnHeaders.length; i++)
             {
                 if (left(ReturnHeaders[i], 9) ~= "location:")
                 {
-                    // TODO: temp proxy
+                    tmp = Utils.Trim(mid(ReturnHeaders[i], 9));
+                    if (Utils.parseUrl(tmp, TempProxy))
+                    {
+                        if (TempProxy.protocol != "http")
+                        {
+                            Logf("Unsupported temporary proxy", Utils.LOGWARN, tmp);
+                            return false;
+                        }
+                        bUseTempProxy = true;
+                        return true;
+                    }
+                    Logf("Invalid temporary proxy location", Utils.LOGWARN, tmp);
                     break;
                 }
             }
-            return true;
+            return false;
     }
     return false;
 }

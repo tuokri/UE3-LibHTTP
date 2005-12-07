@@ -156,29 +156,17 @@ New in version 350:
 
 New in version 400:
 <ul>
-	<li>Fixed a bug in the location parsing where the port was never parsed correctly.</li>
-	<li>Added a workaround for the quoted strings in structs bug in UE2 for the cookies, in some cases cookie values could have a quote or two.</li>
-	<li>... change to use xURL</li>
-	<li>... added bAuthRetry thing</li>
-	<li>...</li>
-
-    New in version 400:                                                         <br />
-    * redone the redirection processing, now with better support for each
-        redirection type.                                                       <br />
-    * new variable bRfcCompliantRedirect, set this to false for the old, and
-        bad, redirection handling on 301/302 headers (e.g. transform POST into
-        GET)                                                                    <br />
-    * moved DNS caching to a global object, multiple HttpSock classes now use
-        the same cache data                                                     <br />
-    * added automatic retrying when authentication data is provided in the url,
-        the prefered method for using authenticated locations is to provide the
-        username and password in the url or set them in the currenturl after the
-        OnRequireAuthorization was received.                                    <br />
-    * ClearRequestData() will now automatically clear authentication information
-
-newsfeed handle CDATA
-fixed cookie handler
-
+	<li>Redone the redirection processing, now with better support for each redirection type</li>
+	<li>New variable <code>HttpSock.bRfcCompliantRedirect</code>, set this to false for the old, and bad, redirection handling on 301/302 headers (e.g. transform POST into GET)</li>
+	<li>Moved DNS caching to a global object, multiple HttpSock classes now use the same cache data</li>
+	<li>Added automatic retrying when authentication data is provided in the url, the prefered method for using authenticated locations is to provide the username and password in the url or set them in the currenturl after the <code>OnRequireAuthorization()</code> was received. Can be disabled by setting <code>HttpSock.bAutoAuthenticate</code> to false</li>
+	<li><code>HttpSock.ClearRequestData()</code> will now automatically clear authentication information</li>
+	<li>NewsFeed properly reads CDATA</li>
+	<li>NewsFeed description fields are truncated to 512 bytes (because of a bug in the engine). Set <code>NewsFeed.bSizeBugFix</code> to false to disable it.</li>
+	<li>URL parsing is now done by HttpUtil and stores it in a new xURL struct, all old references to storage of the location and host have been changed to xURL.</li>
+	<li>Fixed a couple of bugs in cookie handler, the first cookie was never properly unset</li>
+	<li>Fixed a bug where the last line of data may not be properly added to the result array</li>
+	<li>Moved the HttpTest class to a UsUnit test suite</li>
 </ul>
 
 <h2>Copyright</h2>
