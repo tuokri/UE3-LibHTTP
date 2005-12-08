@@ -14,7 +14,7 @@
     Released under the Lesser Open Unreal Mod License                           <br />
     http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense
 
-    <!-- $Id: HttpUtil.uc,v 1.19 2005/12/03 11:44:25 elmuerte Exp $ -->
+    <!-- $Id: HttpUtil.uc,v 1.20 2005/12/08 18:53:14 elmuerte Exp $ -->
 *******************************************************************************/
 
 class HttpUtil extends Core.Object;
@@ -436,7 +436,7 @@ static final function int stringToTimestamp(string datestring, optional int TZof
     local array<string> data, datePart, timePart;
     local int i;
     local float tzoff;
-
+    datestring = trim(datestring);
     split(datestring, " ", data);
     if (data.length == 6) // date is in spaced format
     {

@@ -19,19 +19,21 @@
     Released under the Lesser Open Unreal Mod License                           <br />
     http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense                <br />
 
-    <!-- $Id: HttpCache.uc,v 1.6 2005/10/10 12:01:03 elmuerte Exp $ -->
+    <!-- $Id: HttpCache.uc,v 1.7 2005/12/08 18:55:06 elmuerte Exp $ -->
 *******************************************************************************/
 
-class HttpCache extends Engine.Info config(HttpCache) /*ParseConfig*/;
+class HttpCache extends Engine.Info
+    config(HttpCache)
+    ParseConfig
+    dependsOn(HttpUtil);
 
-/** handle to the last cache hit  */
-var HttpCacheObject LastHit; //TODO: obsolete?
-
-/** the cache object class to use */
+/**  */
+var class<HttpSock> HttpSockClass;
+/**  */
 var class<HttpCacheObject> HttpCacheObjectClass;
 
 /** maximum cache size (entries?) */
-var(Options) config int iCacheLimit;
+var(Options) globalconfig int iCacheLimit;
 
 /**
    Reasons for a failure
@@ -42,6 +44,7 @@ enum ECacheFailError
     CF_BadRequest,  /* the get request isn't valid */
     CF_AuthRequired,/* authentication required, you may not use that */
     CF_Timeout,     /* timeout connecting to the server to get initial data */
+    CF_ResolveFailed,/* hostname couldn't be resolved */
     CF_Busy,        /* already busy performing a refresh of this request */
 
     CF_Unknown,     /* something serious happened */
@@ -61,13 +64,16 @@ enum EDataOrigin
 /** records of the cached entries */
 struct CacheInfoRecord
 {
-    var string URL;
+    /** the request URL */
+    var HttpUtil.xURL URL;
     /** hash used for record info */
     var int Hash;
-    /** index in the CacheObjectList */
-    var int colidx; // should be reset on respawn
-    /** last request, will be used for cleanup */
-    var int LastRequest;
+    /** last datazie */
+    var int DataSize;
+    /** last update */
+    var int LastUpdate;
+    /** index in the CacheObjectList, volatile */
+    var int colidx;
 };
 
 /** cache list, each entry is an URL */
@@ -79,7 +85,6 @@ var protected array<HttpCacheObject> CacheObjectList;
 struct CacheRequest
 {
     var HttpSock Socket;
-    /** idx of the CacheInfoRecord, if -1 then it's not assigned */
     var int idx;
 };
 /** running requests */
@@ -104,23 +109,15 @@ delegate OnComplete(HttpCache Sender, HttpCacheObject Data, EDataOrigin origin);
 /**
     failed to complete the request, will be called when everything fails
 */
-delegate OnFail(HttpCahce Sender, int id, ECacheFailError reason);
-
-/**
-    cache hit
-*/
-delegate OnCacheHit(HttpCache Sender, int id);
-/**
-    cache fail, get fresh info
-*/
-delegate OnCacheFail(HttpCache Sender, int id);
+delegate OnFail(HttpCache Sender, int idx, ECacheFailError reason);
 
 /**
     Will be called after the HttpSock instance has been created. Use it to set
     certain variables and delegates for the HttpSock. <br />
-    Note: some delegates in HttpSock will always be assigned to this actor.
+    Note: You shouldn't set any delegates in the sccket, most will be
+    overwritten anyway.
 */
-delegate OnCreateSock(HttpCache Sender, HttpSock Socket, int id);
+delegate OnCreateSock(HttpCache Sender, HttpSock Socket);
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -135,28 +132,65 @@ delegate OnCreateSock(HttpCache Sender, HttpSock Socket, int id);
 function int get(string location)
 {
     local int hash;
-    local int idx;
-    local HttpUtil.xURL xURL;
-    local HttpCacheObject hco;
+    local int idx, i;
+    local HttpUtil.xURL xloc;
+    local HttpCacheObject co;
 
-    if (!class'HttpUtil'.static.parseUrl(location, xURL))
+    if (!class'HttpUtil'.static.parseUrl(location, xloc))
     {
-        return -1; //TODO: ERROR
+        OnFail(self, -1, CF_BadRequest);
+        return -1;
     }
-    xURL.hostname = Locs(xURL.hostname);
-    if (xURL.username != "")
-    {
-        return -1; //TODO: username thingy not allowed
-    }
-    location = class'HttpUtil'.static.xURLtoString(xURL);
+    //TODO: check http, etc.
+    xloc.hostname = Locs(xloc.hostname);
+    location = class'HttpUtil'.static.xUrlToString(xloc, true);
     hash = createHash(location);
     idx = findCacheRecord(hash);
     if (idx == -1)
     {
         idx = CacheList.length;
-        CacheList[idx].URL = location;
+        CacheList.length = idx+1;
+        CacheList[idx].URL = xloc;
         CacheList[idx].hash = hash;
         CacheList[idx].colidx = -1;
+    }
+    co = getCacheObject(idx);
+    if (co.bBusy)
+    {
+        OnFail(self, -1, CF_Busy);
+        return -1;
+    }
+    co.URL = location;
+    co.bBusy = true;
+    if (co.ExpiresOn > class'HttpUtil'.static.timestamp(Level.Year, Level.Month, Level.Day, Level.Hour, Level.Minute, Level.Second))
+    {
+        // content not yet expired
+        OnComplete(self, co, DO_Cache);
+        return idx; // no need to save anything
+    }
+    // find free sock
+    for (i = 0; i < Requests.length; i++)
+    {
+        if (Requests[i].idx == -1) break;
+    }
+    if (i == Requests.length)
+    {
+        Requests.length = i+1;
+        Requests[i].Socket = spawn(HttpSockClass);
+        OnCreateSock(self, Requests[i].Socket);
+        Requests[i].Socket.OnComplete = DownloadComplete;
+        Requests[i].Socket.OnError = DownloadError;
+        Requests[i].Socket.OnConnectionTimeout = DownloadTimeout;
+        Requests[i].Socket.OnResolveFailed = ResolveFailed;
+    }
+    Requests[i].idx = idx;
+    Requests[i].Socket.ClearRequestData();
+    if (co.LastModification > 0)
+        Requests[i].Socket.AddHeader("If-Modified-Since", class'HttpUtil'.static.timestampToString(co.LastModification));
+    if (!Requests[i].Socket.get(location))
+    {
+        OnFail(self, -1, CF_BadRequest);
+        return -1;
     }
     hco = getCacheObject(idx);
     // if expired
@@ -172,6 +206,14 @@ function int get(string location)
 */
 function bool isCached(string location)
 {
+    local int i;
+    local HttpUtil.xURL xloc;
+    if (!class'HttpUtil'.static.parseUrl(location, xloc)) return false;
+    xloc.hostname = Locs(xloc.hostname);
+    for (i = 0; i < CacheList.length; i++)
+    {
+        if (CacheList[i].URL == xloc) return true;
+    }
     return false;
 }
 
@@ -181,7 +223,8 @@ function bool isCached(string location)
 */
 function bool getURLbyId(int id, out string URL)
 {
-
+    if ((id < 0) || (id > CacheList.length)) return false;
+    URL = class'HttpUtil'.static.xUrlToString(CacheList[id].URL, true);
     return false;
 }
 
@@ -190,6 +233,51 @@ function bool getURLbyId(int id, out string URL)
 //   Private functions
 //
 ////////////////////////////////////////////////////////////////////////////////
+
+event PreBeginPlay()
+{
+    local int i;
+    CacheCleanup();
+    for (i = 0; i < CacheList.length; i++)
+    {
+        CacheList[i].colidx = -1;
+    }
+}
+
+/**
+    Clean up the cache
+*/
+protected function CacheCleanup()
+{
+    local int i, cursize, oldest;
+    local HttpCacheObject co;
+
+    if (CacheList.length == 0) return;
+    if (iCacheLimit == 0) return;
+
+    cursize = 0;
+    for (i = 0; i < CacheList.length; i++)
+    {
+        cursize += CacheList[i].DataSize;
+    }
+    while (cursize > iCacheLimit)
+    {
+        oldest = 0;
+        for (i = 1; i < CacheList.length; i++)
+        {
+            if (CacheList[i].LastUpdate < CacheList[oldest].LastUpdate)
+                oldest = i;
+        }
+        cursize -= CacheList[oldest].DataSize;
+        co = getCacheObject(oldest);
+        co.ClearConfig();
+        // co isn't destroyed because there's no object cleanup anyway,
+        // also we can't reuse it because of the PerObjectConfig
+        CacheObjectList[CacheList[oldest].colidx] = none; // removing this will produce an
+        CacheList.Remove(oldest, 1);
+    }
+    SaveConfig();
+}
 
 /** return the hash of the URL */
 static final function int createHash(string URL)
@@ -206,6 +294,7 @@ static final function int createHash(string URL)
     return result;
 }
 
+/** find an idx using a hash */
 protected function int findCacheRecord(int hash)
 {
     local int i;
@@ -216,21 +305,121 @@ protected function int findCacheRecord(int hash)
     return -1;
 }
 
+/** get\create a CacheObject */
 protected function HttpCacheObject getCacheObject(int idx)
 {
     local int lidx;
+    local HttpCacheObject co;
+
     if (idx < 0 || idx >= CacheList.length) return none;
     if ((CacheList[idx].colidx > -1) && (CacheList[idx].colidx < CacheObjectList.length))
     {
         return CacheObjectList[CacheList[idx].colidx];
     }
     lidx = CacheObjectList.length;
+    CacheObjectList.length = lidx+1;
     CacheList[idx].colidx = lidx;
-    CacheObjectList[lidx] = new(self, "h"$string(CacheList[idx].Hash)) HttpCacheObjectClass;
-    return CacheObjectList[lidx];
+    co = new(None, "Cache_h"$string(CacheList[idx].Hash)) HttpCacheObjectClass;
+    co.SaveConfig();
+    CacheObjectList[lidx] = co;
+    log("Created cache object "$co.name);
+    return co;
+}
+
+protected function DownloadComplete(HttpSock Sender)
+{
+    local int idx, i;
+    local HttpCacheObject co;
+    local EDataOrigin origin;
+
+    idx = -1;
+    for (i = 0; i < Requests.Length; i++)
+    {
+        if (Requests[i].Socket == Sender)
+        {
+            idx = Requests[i].idx;
+            Requests[i].idx = -1;
+        }
+    }
+    if (idx == -1)
+    {
+        //error ?
+        return;
+    }
+    co = getCacheObject(idx);
+    co.bBusy = false;
+    if (co.LastModification == -1) origin = DO_Initial;
+    else if (Sender.LastStatus == 304) origin = DO_Cache;
+    else origin = DO_Refresh;
+
+    if (origin != DO_Cache)
+    {
+        co.Data = Sender.ReturnData;
+        co.LastModification = class'HttpUtil'.static.stringToTimestamp(Sender.GetReturnHeader("Last-Modified", "0"), Sender.getTZoffset());
+        co.ExpiresOn = class'HttpUtil'.static.stringToTimestamp(Sender.GetReturnHeader("Expires", "0"), Sender.getTZoffset());
+        co.ContentType = class'HttpUtil'.static.trim(Sender.GetReturnHeader("Content-Type", ""));
+        co.SaveConfig();
+        CacheList[idx].DataSize = co.GetSize();
+    }
+    CacheList[idx].LastUpdate = class'HttpUtil'.static.timestamp(Level.Year, Level.Month, Level.Day, Level.Hour, Level.Minute, Level.Second);
+    SaveConfig();
+    OnComplete(self, co, origin);
+}
+
+protected function DownloadError(HttpSock Sender, string ErrorMessage, optional string Param1, optional string Param2)
+{
+    local int idx, i;
+    local HttpCacheObject co;
+
+    idx = -1;
+    for (i = 0; i < Requests.Length; i++)
+    {
+        if (Requests[i].Socket == Sender)
+        {
+            idx = Requests[i].idx;
+            Requests[i].idx = -1;
+        }
+    }
+    if (idx == -1) return;
+    co = getCacheObject(idx);
+    co.bBusy = false;
+    OnError(self, ErrorMessage, Param1, Param2);
+}
+
+protected function DownloadTimeout(HttpSock Sender)
+{
+    local int idx, i;
+    idx = -1;
+    for (i = 0; i < Requests.Length; i++)
+    {
+        if (Requests[i].Socket == Sender)
+        {
+            idx = Requests[i].idx;
+        }
+    }
+    if (idx == -1) return;
+    OnFail(self, idx, CF_Timeout);
+}
+
+protected function ResolveFailed(HttpSock Sender, string hostname)
+{
+    local int idx, i;
+    idx = -1;
+    for (i = 0; i < Requests.Length; i++)
+    {
+        if (Requests[i].Socket == Sender)
+        {
+            idx = Requests[i].idx;
+        }
+    }
+    if (idx == -1) return;
+    OnFail(self, idx, CF_ResolveFailed);
 }
 
 defaultproperties
 {
+    HttpSockClass=class'HttpSock'
     HttpCacheObjectClass=class'HttpCacheObject'
+    // 250kb
+    iCacheLimit=262144
 }

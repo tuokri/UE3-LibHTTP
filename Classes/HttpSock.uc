@@ -12,10 +12,12 @@
     Released under the Lesser Open Unreal Mod License                           <br />
     http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense                <br />
 
-    <!-- $Id: HttpSock.uc,v 1.43 2005/12/07 09:41:28 elmuerte Exp $ -->
+    <!-- $Id: HttpSock.uc,v 1.44 2005/12/08 18:53:14 elmuerte Exp $ -->
 *******************************************************************************/
 
-class HttpSock extends Engine.Info config dependson(HttpUtil);
+class HttpSock extends Engine.Info
+    config
+    dependson(HttpUtil);
 
 /** LibHTTP version number */
 const VERSION = 400;
@@ -562,7 +564,7 @@ function string GetRequestHeader(string hname, optional coerce string def)
 function string GetReturnHeader(string hname, optional coerce string def)
 {
     local int i, j;
-    for (i = 0; i < RequestHeaders.length; i++)
+    for (i = 0; i < ReturnHeaders.length; i++)
     {
         j = InStr(ReturnHeaders[i], ":");
         if (Left(ReturnHeaders[i], j) ~= hname)
@@ -692,6 +694,14 @@ function int DataSize(array<string> data)
         res += Len(data[i])+crlflen;
     }
     return res;
+}
+
+/**
+    Return the timezone offset
+*/
+function int getTZoffset()
+{
+    return TZoffset;
 }
 
 ////////////////////////////////////////////////////////////////////////////////
