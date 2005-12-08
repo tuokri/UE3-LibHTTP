@@ -19,7 +19,7 @@
     Released under the Lesser Open Unreal Mod License                           <br />
     http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense                <br />
 
-    <!-- $Id: HttpCache.uc,v 1.7 2005/12/08 18:55:06 elmuerte Exp $ -->
+    <!-- $Id: HttpCache.uc,v 1.8 2005/12/08 18:55:52 elmuerte Exp $ -->
 *******************************************************************************/
 
 class HttpCache extends Engine.Info
@@ -192,12 +192,6 @@ function int get(string location)
         OnFail(self, -1, CF_BadRequest);
         return -1;
     }
-    hco = getCacheObject(idx);
-    // if expired
-      // check if already requesting
-        // spawn request class and validate
-      // call OnComplete
-        // return ??
     return idx;
 }
 
