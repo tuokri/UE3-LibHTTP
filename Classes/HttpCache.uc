@@ -19,7 +19,7 @@
     Released under the Lesser Open Unreal Mod License                           <br />
     http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense                <br />
 
-    <!-- $Id: HttpCache.uc,v 1.8 2005/12/08 18:55:52 elmuerte Exp $ -->
+    <!-- $Id: HttpCache.uc,v 1.9 2005/12/09 08:31:11 elmuerte Exp $ -->
 *******************************************************************************/
 
 class HttpCache extends Engine.Info
@@ -259,6 +259,7 @@ protected function CacheCleanup()
         oldest = 0;
         for (i = 1; i < CacheList.length; i++)
         {
+            if (CacheList[i].LastUpdate == 0) continue;
             if (CacheList[i].LastUpdate < CacheList[oldest].LastUpdate)
                 oldest = i;
         }
@@ -267,8 +268,10 @@ protected function CacheCleanup()
         co.ClearConfig();
         // co isn't destroyed because there's no object cleanup anyway,
         // also we can't reuse it because of the PerObjectConfig
-        CacheObjectList[CacheList[oldest].colidx] = none; // removing this will produce an
-        CacheList.Remove(oldest, 1);
+        CacheObjectList[CacheList[oldest].colidx] = none;
+        CacheList[oldest].DataSize = 0;
+        CacheList[oldest].colidx = -1;
+        CacheList[oldest].LastUpdate = 0;
     }
     SaveConfig();
 }
@@ -414,6 +417,6 @@ defaultproperties
 {
     HttpSockClass=class'HttpSock'
     HttpCacheObjectClass=class'HttpCacheObject'
-    // 250kb
-    iCacheLimit=262144
+    // 512kb
+    iCacheLimit=524288
 }

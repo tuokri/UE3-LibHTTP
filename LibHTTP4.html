@@ -104,7 +104,7 @@ YOU WILL ASSUME ALL COSTS FOR REQUIRED REPAIR OR CORRECTION.
 </pre>
 
 <h2>UnrealEngine2 support</h2>
-Version 2 has been developed using the UT2004 build of the UnrealEngine2. However, there's a big chance that this library also works on other UnrealEngine2 build without much additional work. <br />
+Version 2 has been developed using the UT2004 build of the UnrealEngine2 (UnrealEngine2.5). However, there's a big chance that this library also works on other UnrealEngine2 build without much additional work. <br />
 If you are going to use this library on a diffirent build of the UnrealEngine2, please notify me (elmuerte <i>at</i> drunksnipers.com) so we can create a release version of that build.
 
 <h2>Documentation</h2>
@@ -156,6 +156,7 @@ New in version 350:
 
 New in version 400:
 <ul>
+	<li>Various small bugfixes</li>
 	<li>Redone the redirection processing, now with better support for each redirection type</li>
 	<li>New variable <code>HttpSock.bRfcCompliantRedirect</code>, set this to false for the old, and bad, redirection handling on 301/302 headers (e.g. transform POST into GET)</li>
 	<li>Moved DNS caching to a global object, multiple HttpSock classes now use the same cache data</li>
@@ -167,6 +168,8 @@ New in version 400:
 	<li>Fixed a couple of bugs in cookie handler, the first cookie was never properly unset</li>
 	<li>Fixed a bug where the last line of data may not be properly added to the result array</li>
 	<li>Moved the HttpTest class to a UsUnit test suite</li>
+	<li>Fixed <code>HttpSock.GetReturnHeader()</code></li>
+	<li>Added a new class HttpCache that manages cached requests, this is somewhat experimental</li>
 </ul>
 
 <h2>Copyright</h2>
