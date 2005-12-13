@@ -14,7 +14,7 @@
     Released under the Lesser Open Unreal Mod License                           <br />
     http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense
 
-    <!-- $Id: HttpUtil.uc,v 1.20 2005/12/08 18:53:14 elmuerte Exp $ -->
+    <!-- $Id: HttpUtil.uc,v 1.21 2005/12/13 11:36:08 elmuerte Exp $ -->
 *******************************************************************************/
 
 class HttpUtil extends Core.Object;
@@ -94,6 +94,9 @@ const TOKEN_USERPASS = ":";
 /** URL delimiter */
 const TOKEN_PORT = ":";
 
+/** URL escape token */
+const URL_ESCAPE = "%";
+
 /**
     Encode special characters, you should not use this function, it's slow and not
     secure, so try to avoid it.
@@ -112,6 +115,29 @@ static final function string RawUrlEncode(string instring)
     ReplaceChar(instring, ",", "%2C");
     ReplaceChar(instring, "$", "%24");
     ReplaceChar(instring, " ", "%20");
+    return instring;
+}
+
+/**
+    This will decode URL encoded elements. If bIgnorePlus is set to true '+' will
+    not be changed to a space
+*/
+static final function string RawUrlDecode(string instring, optional bool bIgnorePlus)
+{
+    local int i;
+    local string char;
+
+    if (!bIgnorePlus) ReplaceChar(instring, "+", " ");
+    i = InStr(instring, URL_ESCAPE);
+    while (i > -1)
+    {
+        char = mid(instring, i+1, 2);
+        char = chr(HexToDec(char));
+        if (char == "%") char = chr(1);
+        instring = Left(instring, i)$char$Mid(instring, i+3);
+        i = InStr(instring, URL_ESCAPE);
+    }
+    ReplaceChar(instring, chr(1), URL_ESCAPE); // % was replace with \1
     return instring;
 }
 
@@ -142,6 +168,8 @@ static final function bool parseUrl(string inURL, out xURL outURL)
             outURL.password = Mid(outURL.username, i+len(TOKEN_USERPASS));
             outURL.username = Left(outURL.username, i);
         }
+        outURL.username = RawUrlDecode(outURL.username);
+        outURL.password = RawUrlDecode(outURL.password);
     }
     if (inURL == "") return false;
     i = InStr(inURL, TOKEN_PATH);
@@ -196,8 +224,8 @@ static final function string xURLtoString(xURL inURL, optional bool bIncludePass
     r = inURL.protocol$TOKEN_PROTOCOL;
     if (inURL.username != "")
     {
-        r $= inURL.username;
-        if (inURL.password != "" && bIncludePassword) r $= TOKEN_USERPASS$inURL.password;
+        r $= RawUrlEncode(inURL.username);
+        if (inURL.password != "" && bIncludePassword) r $= TOKEN_USERPASS$RawUrlEncode(inURL.password);
         r $= TOKEN_USER;
     }
     r $= inURL.hostname;

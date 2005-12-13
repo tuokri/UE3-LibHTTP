@@ -12,7 +12,7 @@
     Released under the Lesser Open Unreal Mod License                           <br />
     http://wiki.beyondunreal.com/wiki/LesserOpenUnrealModLicense                <br />
 
-    <!-- $Id: HttpSock.uc,v 1.44 2005/12/08 18:53:14 elmuerte Exp $ -->
+    <!-- $Id: HttpSock.uc,v 1.45 2005/12/13 11:36:08 elmuerte Exp $ -->
 *******************************************************************************/
 
 class HttpSock extends Engine.Info
@@ -20,7 +20,7 @@ class HttpSock extends Engine.Info
     dependson(HttpUtil);
 
 /** LibHTTP version number */
-const VERSION = 400;
+const VERSION = 401;
 /**
     If you make a custom build of this package, or subclass this class then
     please change the following constant to countain your "extention" name. This
@@ -552,7 +552,7 @@ function string GetRequestHeader(string hname, optional coerce string def)
         j = InStr(RequestHeaders[i], ":");
         if (Left(RequestHeaders[i], j) ~= hname)
         {
-            return Mid(RequestHeaders[i], j+1);
+            return Utils.trim(Mid(RequestHeaders[i], j+1));
         }
     }
     return def;
@@ -569,7 +569,7 @@ function string GetReturnHeader(string hname, optional coerce string def)
         j = InStr(ReturnHeaders[i], ":");
         if (Left(ReturnHeaders[i], j) ~= hname)
         {
-            return Mid(ReturnHeaders[i], j+1);
+            return Utils.trim(Mid(ReturnHeaders[i], j+1));
         }
     }
     return def;
