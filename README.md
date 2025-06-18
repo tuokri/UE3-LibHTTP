@@ -1,18 +1,21 @@
-# UnrealEngine2 LibHTTP
+# Unreal Engine 3 LibHTTP
 
-LibHTTP is a general perpose library for UnrealEngine2. It allows you to fetch files stored on webservers.
+LibHTTP is a general purpose library for Unreal Engine 3. It allows you to fetch files stored on web servers.
 
-Features:
+Based on UE2-LibHTTP by elmuerte: https://github.com/elmuerte/UE2-LibHTTP.
+
+Ported to Unreal Engine 3. Some features have been stripped.
+
+Features (some might not work in the UE3 version):
 
 - Support for HTTP version 1.0 and 1.1
 - Support for GET/POST/HEAD/TRACE request methods
 - Normal and accelerated transfer modes (accelerated mode creates a performance hit)
-- Response and Request Header managent
+- Response and Request Header management
 - Cookie management
 - Authentication supports (both Basic and Digest methods are supported)
 - Support for HTTP proxies
-- Gracefull handling of connection timeouts
+- Graceful handling of connection timeouts
 - Automatic decoding of chunked data
-- Automatically follows redirections (creates a redirection history)
-- Support for multipart/form-data POST data (prefered form)
-
+- Automatically follows redirects (creates a redirection history)
+- Support for multipart/form-data POST data (preferred form)
