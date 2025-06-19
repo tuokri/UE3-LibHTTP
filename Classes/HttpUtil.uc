@@ -1,11 +1,36 @@
+/*
+ * MIT License
+ *
+ * Copyright (c) 2025 Tuomo Kriikkula
+ * Copyright (c) 2003-2005 Michiel Hendriks
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 /*******************************************************************************
     HttpUtil                                                                    <br />
-    Miscelaneous static functions. Part of [[LibHTTP]].                         <br />
+    Miscellaneous static functions. Part of [[LibHTTP]].                        <br />
     Contains various algorithms, under which [[Base64]] encoding and [[MD5]]
     hash generation.                                                            <br />
     [[MD5]] code by Petr Jelinek ( http://wiki.beyondunreal.com/wiki/MD5 )      <br />
                                                                                 <br />
-    Dcoumentation and Information:
+    Documentation and Information:
         http://wiki.beyondunreal.com/wiki/LibHTTP                               <br />
                                                                                 <br />
     Authors:    Michiel 'El Muerte' Hendriks &lt;elmuerte@drunksnipers.com&gt;  <br />
@@ -25,33 +50,33 @@ var const int LOGWARN;
 var const int LOGINFO;
 var const int LOGDATA;
 
-/** month names to use for date string generation */
+/** Month names to use for date string generation */
 var const string MonthNames[13];
 /** names of the days, 0 = sunday */
 var const string DayNamesLong[7], DayNamesShort[7];
-/** days offsets for each month*/
+/** days offsets for each Month*/
 var const int MonthOffset[13], MonthOffsetLeap[13];
 
 struct DateTime
 {
-    var int year;
-    var int month;
-    var int day;
-    var int weekday;
-    var int hour;
-    var int minute;
-    var int second;
+    var int Year;
+    var int Month;
+    var int Day;
+    var int WeekDay;
+    var int Hour;
+    var int Minute;
+    var int Second;
 };
 
-/** MD5 context */
+/** MD5 Context */
 struct MD5_CTX
 {
-    /** state (ABCD) */
-    var array<int> state;
+    /** State (ABCD) */
+    var array<int> State;
     /** number of bits, modulo 2^64 (lsb first) */
-    var array<int> count;
-    /** input buffer */
-    var array<byte> buffer;
+    var array<int> Count;
+    /** Input Buffer */
+    var array<byte> Buffer;
 };
 
 /** a better URL structure that contains all elements */
@@ -149,7 +174,7 @@ static final function bool parseUrl(string inURL, out xURL outURL)
     if (i == -1) return false;
     if (i == 0) return false; // empty protocol
     outURL.protocol = Left(inURL, i);
-    inURL = mid(inURL, i+len(TOKEN_PROTOCOL));
+    inURL = mid(inURL, i+Len(TOKEN_PROTOCOL));
     i = InStr(inURL, TOKEN_USER);
     if (i == -1)
     {
@@ -158,14 +183,14 @@ static final function bool parseUrl(string inURL, out xURL outURL)
     }
     else {
         outURL.username = Left(inURL, i);
-        inURL = mid(inURL, i+len(TOKEN_USER));
+        inURL = mid(inURL, i+Len(TOKEN_USER));
         i = InStr(outURL.username, TOKEN_USERPASS);
         if (i == -1)
         {
             outURL.password = "";
         }
         else {
-            outURL.password = Mid(outURL.username, i+len(TOKEN_USERPASS));
+            outURL.password = Mid(outURL.username, i+Len(TOKEN_USERPASS));
             outURL.username = Left(outURL.username, i);
         }
         outURL.username = RawUrlDecode(outURL.username);
@@ -202,14 +227,14 @@ static final function bool parseUrl(string inURL, out xURL outURL)
     i = InStr(inURL, TOKEN_HASH);
     if (i != -1)
     {
-        outURL.hash = Mid(inURL, i+len(TOKEN_HASH));
+        outURL.hash = Mid(inURL, i+Len(TOKEN_HASH));
         inURL = left(inURL, i);
     }
     else outURL.hash = "";
     i = InStr(inURL, TOKEN_QUERY);
     if (i != -1)
     {
-        outURL.query = Mid(inURL, i+len(TOKEN_QUERY));
+        outURL.query = Mid(inURL, i+Len(TOKEN_QUERY));
         inURL = left(inURL, i);
     }
     else outURL.query = "";
@@ -218,7 +243,7 @@ static final function bool parseUrl(string inURL, out xURL outURL)
 }
 
 /** converts a xURL to a string. bIncludePassword defaults to false */
-static final function string xURLtoString(xURL inURL, optional bool bIncludePassword)
+static final function string xURLtoString(xURL inURL, optional bool bIncludePassword = False)
 {
     local string r;
     r = inURL.protocol$TOKEN_PROTOCOL;
@@ -238,7 +263,7 @@ static final function string xURLtoString(xURL inURL, optional bool bIncludePass
 }
 
 /** convert a xURL to a location string, just the location+query+hash */
-static final function string xURLtoLocation(xURL inURL, optional bool bIncludePassword)
+static final function string xURLtoLocation(const out xURL inURL, optional bool bIncludePassword)
 {
     local string r;
     r = inURL.location;
@@ -271,17 +296,17 @@ static final function ReplaceChar(out string instring, string from, string to)
 {
     //#ifdef UE2
     local int i;
-    local string src;
-    src = instring;
+    local string Src;
+    Src = instring;
     instring = "";
-    i = InStr(src, from);
+    i = InStr(Src, from);
     while (i > -1)
     {
-        instring = instring$Left(src, i)$to;
-        src = Mid(src, i+Len(from));
-        i = InStr(src, from);
+        instring = instring$Left(Src, i)$to;
+        Src = Mid(Src, i+Len(from));
+        i = InStr(Src, from);
     }
-    instring = instring$src;
+    instring = instring$Src;
     //#endif
     //#ifdef UE5
     //instring = repl(instring, from, to);
@@ -289,11 +314,11 @@ static final function ReplaceChar(out string instring, string from, string to)
 }
 
 /**
-    base64 encode an input array
+    base64 encode an Input array
 */
-static final function array<string> Base64Encode(array<string> indata, out array<string> B64Lookup)
+static final function array<string> Base64Encode(const out array<string> InData, out array<string> B64Lookup)
 {
-    local array<string> result;
+    local array<string> Result;
     local int i, dl, n;
     local string res;
     local array<byte> inp;
@@ -302,12 +327,12 @@ static final function array<string> Base64Encode(array<string> indata, out array
     if (B64Lookup.length != 64) Base64EncodeLookupTable(B64Lookup);
 
     // convert string to byte array
-    for (n = 0; n < indata.length; n++)
+    for (n = 0; n < InData.length; n++)
     {
-        res = indata[n];
+        res = InData[n];
         outp.length = 0;
         inp.length = 0;
-        for (i = 0; i < len(res); i++)
+        for (i = 0; i < Len(res); i++)
         {
             inp[inp.length] = Asc(Mid(res, i, 1));
         }
@@ -332,7 +357,7 @@ static final function array<string> Base64Encode(array<string> indata, out array
             outp[outp.length] = B64Lookup[(inp[i+2]&63)];
             i += 3;
         }
-        // pad result
+        // pad Result
         if ((dl%3) == 1)
         {
             outp[outp.length-1] = "=";
@@ -348,34 +373,34 @@ static final function array<string> Base64Encode(array<string> indata, out array
         {
             res = res$outp[i];
         }
-        result[result.length] = res;
+        Result[Result.length] = res;
     }
 
-    return result;
+    return Result;
 }
 
 /**
     Decode a base64 encoded string
 */
-static final function array<string> Base64Decode(array<string> indata)
+static final function array<string> Base64Decode(const out array<string> InData)
 {
-    local array<string> result;
+    local array<string> Result;
     local int i, dl, n, padded;
     local string res;
     local array<byte> inp;
     local array<string> outp;
 
     // convert string to byte array
-    for (n = 0; n < indata.length; n++)
+    for (n = 0; n < InData.length; n++)
     {
-        res = indata[n];
+        res = InData[n];
         outp.length = 0;
         inp.length = 0;
         padded = 0;
-        for (i = 0; i < len(res); i++)
+        for (i = 0; i < Len(res); i++)
         {
             dl = Asc(Mid(res, i, 1));
-            // convert base64 ascii to base64 index
+            // convert base64 ascii to base64 Index
             if ((dl >= 65) && (dl <= 90)) dl -= 65; // cap alpha
             else if ((dl >= 97) && (dl <= 122)) dl -= 71; // low alpha
             else if ((dl >= 48) && (dl <= 57)) dl += 4; // digits
@@ -401,10 +426,10 @@ static final function array<string> Base64Decode(array<string> indata)
         {
             res = res$outp[i];
         }
-        result[result.length] = res;
+        Result[Result.length] = res;
     }
 
-    return result;
+    return Result;
 }
 
 /**
@@ -435,7 +460,7 @@ static final function Base64EncodeLookupTable(out array<string> LookupTable)
     if you are going to send a timestamp generated with this function to an other
     server.
 */
-static final function int timestamp(int year, int mon, int day, int hour, int min, int sec)
+static final function int UnixTimestamp(int Year, int mon, int Day, int Hour, int min, int sec)
 {
     /*
         Origin of the algorithm below:
@@ -443,13 +468,13 @@ static final function int timestamp(int year, int mon, int day, int hour, int mi
     */
     mon -= 2;
     if (mon <= 0) {    /* 1..12 -> 11,12,1..10 */
-        mon += 12;    /* Puts Feb last since it has leap day */
-        year -= 1;
+        mon += 12;    /* Puts Feb last since it has leap Day */
+        Year -= 1;
     }
     return (((
-        (year/4 - year/100 + year/400 + 367*mon/12 + day) +
-          year*365 - 719499
-        )*24 + hour /* now have hours */
+        (Year/4 - Year/100 + Year/400 + 367*mon/12 + Day) +
+          Year*365 - 719499
+        )*24 + Hour /* now have hours */
        )*60 + min  /* now have minutes */
       )*60 + sec; /* finally seconds */
 }
@@ -457,71 +482,78 @@ static final function int timestamp(int year, int mon, int day, int hour, int mi
 /**
     Parse a string to a timestamp
     The date string is formatted as: Wdy, DD-Mon-YYYY HH:MM:SS GMT
-    TZoffset is the local offset to GMT
+    TZOffset is the local offset to GMT
 */
-static final function int stringToTimestamp(string datestring, optional int TZoffset)
+static final function int stringToTimestamp(string DateString, optional int TZOffset)
 {
-    local array<string> data, datePart, timePart;
+    local array<string> Data, DatePart, TimePart;
     local int i;
-    local float tzoff;
-    datestring = trim(datestring);
-    split(datestring, " ", data);
-    if (data.length == 6) // date is in spaced format
+    local float TZOff;
+
+    DateString = Trim(DateString);
+
+    ParseStringIntoArray(DateString, Data, " ", false);
+
+    if (Data.length == 6) // date is in spaced format
     {
-        data[1] = data[1]$"-"$data[2]$"-"$data[3];
-        data[2] = data[4];
-        data[3] = data[5];
-        data.length = 4;
+        Data[1] = Data[1]$"-"$Data[2]$"-"$Data[3];
+        Data[2] = Data[4];
+        Data[3] = Data[5];
+        Data.length = 4;
     }
-    if (data.length == 4)
+    if (Data.length == 4)
     {
-        if (split(data[1], "-", datePart) != 3) return 0;
-        if (split(data[2], ":", timePart) != 3) return 0;
-        // find month offset
+        ParseStringIntoArray(Data[1], DatePart, "-", False);
+        if (DatePart.length != 3) return 0;
+
+        ParseStringIntoArray(Data[2], TimePart, "-", False);
+        if (DatePart.length != 3) return 0;
+
+        // find Month offset
         for (i = 1; i < ArrayCount(default.MonthNames); i++)
         {
-            if (default.MonthNames[i] ~= datePart[1])
+            if (default.MonthNames[i] ~= DatePart[1])
             {
-                datePart[1] = string(i);
+                DatePart[1] = string(i);
                 break;
             }
         }
-        if (Len(datePart[2]) == 2) datePart[2] = "20"$datePart[2];
-        tzoff = TZtoOffset(data[3]);
-        return timestamp(int(datePart[2]), int(datePart[1]), int(datePart[0]),
-            int(timePart[0])+TZoffset+int(tzoff), int(timePart[1])+(tzoff%1*60), int(timePart[2]));
+        if (Len(DatePart[2]) == 2) DatePart[2] = "20"$DatePart[2];
+        TZOff = TZtoOffset(Data[3]);
+        return UnixTimestamp(int(DatePart[2]), int(DatePart[1]), int(DatePart[0]),
+            int(TimePart[0])+TZOffset+int(TZOff), int(TimePart[1])+(TZOff%1*60), int(TimePart[2]));
     }
     return 0;
 }
 
-/** returns if year is a leap year */
-static final function bool isLeapYear(int year)
+/** Returns if Year is a leap Year */
+static final function bool IsLeapYear(int Year)
 {
-    return (year) % 4 == 0 && ((year) % 100 != 0 || (year) % 400 == 0);
+    return (Year) % 4 == 0 && ((Year) % 100 != 0 || (Year) % 400 == 0);
 }
 
-/** returns the number of days in a year */
-static final function int daysInYear(int year)
+/** returns the number of days in a Year */
+static final function int DaysInYear(int Year)
 {
     const DAYS_PER_YEAR = 365;
     const DAYS_PER_LEAP_YEAR = 366;
-    if (isLeapYear(year)) return DAYS_PER_LEAP_YEAR;
+    if (IsLeapYear(Year)) return DAYS_PER_LEAP_YEAR;
     else return DAYS_PER_YEAR;
 }
 
-static final function int leapsThruEndOf(int y)
+static final function int LeapsThruEndOf(int y)
 {
     return ((y / 4) - (y / 100) + (y / 400));
 }
 
-/** the float % operator is broken for our needs (numbers >2^24) */
-static final operator(18) int % ( int x, int y )
-{
-    return x-(x/y*y);
-}
+// /** the float % operator is broken for our needs (numbers >2^24) */
+// static final operator(18) int % ( int x, int y )
+// {
+//     return x-(x/y*y);
+// }
 
 /** converts a timestamp to a DateTime record */
-static final function DateTime timestampToDatetime(int timestamp)
+static final function DateTime TimestampToDatetime(int timestamp)
 {
     /*
         Origin of the algorithm below:
@@ -544,35 +576,35 @@ static final function DateTime timestampToDatetime(int timestamp)
         rem -= SECS_PER_DAY;
         ++days;
     }
-    dt.hour = rem / SECS_PER_HOUR;
+    dt.Hour = rem / SECS_PER_HOUR;
     rem = rem % SECS_PER_HOUR;
-    dt.minute = rem / 60;
-      dt.second  = rem % 60;
+    dt.Minute = rem / 60;
+      dt.Second  = rem % 60;
       /* January 1, 1970 was a Thursday.  */
-    dt.weekday = (4 + days) % 7;
-    if (dt.weekday < 0) dt.weekday += 7;
-     dt.year = 1970;
+    dt.WeekDay = (4 + days) % 7;
+    if (dt.WeekDay < 0) dt.WeekDay += 7;
+     dt.Year = 1970;
 
-     while (days < 0 || days >= daysInYear(dt.year))
+     while (days < 0 || days >= DaysInYear(dt.Year))
     {
-        /* Guess a corrected year, assuming 365 days per year.  */
-        yg = dt.year + days / DAYS_PER_YEAR - int(days % DAYS_PER_YEAR < 0);
-        /* Adjust DAYS and Y to match the guessed year.  */
-        days -= ((yg - dt.year) * DAYS_PER_YEAR + leapsThruEndOf(yg - 1) - leapsThruEndOf(dt.year - 1));
-        dt.year = yg;
+        /* Guess a corrected Year, assuming 365 days per Year.  */
+        yg = dt.Year + days / DAYS_PER_YEAR - int(days % DAYS_PER_YEAR < 0);
+        /* Adjust DAYS and Y to match the guessed Year.  */
+        days -= ((yg - dt.Year) * DAYS_PER_YEAR + LeapsThruEndOf(yg - 1) - LeapsThruEndOf(dt.Year - 1));
+        dt.Year = yg;
     }
-    if (isLeapYear(dt.year))
+    if (IsLeapYear(dt.Year))
     {
         for (yg = 11; days < default.MonthOffsetLeap[yg]; --yg) continue;
-        dt.month = yg;
+        dt.Month = yg;
         days -= default.MonthOffsetLeap[yg];
     }
     else {
         for (yg = 11; days < default.MonthOffset[yg]; --yg) continue;
-        dt.month = yg;
+        dt.Month = yg;
         days -= default.MonthOffset[yg];
     }
-    dt.day = days + 1;
+    dt.Day = days + 1;
     return dt;
 }
 
@@ -582,33 +614,33 @@ static final function DateTime timestampToDatetime(int timestamp)
     "822", "1123" : RFC 822, updated by RFC 1123 (default), timezone is the TZ CODE <br />
     "850", "1036" : RFC 850, obsoleted by RFC 1036, timezone is the TZ CODE  <br />
     "2822" : RFC 2822, timezone is a +0000 like string <br />
-    "asctime": ANSI C's asctime() format, timezone is an integer that will increment the hour
+    "asctime": ANSI C's asctime() format, timezone is an integer that will increment the Hour
 */
 static final function string timestampToString(int timestamp, optional string Timezone, optional string format)
 {
     local DateTime dt;
-    dt = timestampToDatetime(timestamp);
+    dt = TimestampToDatetime(timestamp);
     switch (format)
     {
         case "850":
         case "1036":
             if (Timezone == "") Timezone = "GMT";
-            format = default.DayNamesLong[dt.weekday]$", "$Right("0"$dt.day, 2)$"-"$default.MonthNames[dt.month+1]$"-"$dt.Year@Right("0"$dt.hour, 2)$":"$Right("0"$dt.minute, 2)$":"$Right("0"$dt.second, 2)@Timezone;
+            format = default.DayNamesLong[dt.WeekDay]$", "$Right("0"$dt.Day, 2)$"-"$default.MonthNames[dt.Month+1]$"-"$dt.Year@Right("0"$dt.Hour, 2)$":"$Right("0"$dt.Minute, 2)$":"$Right("0"$dt.Second, 2)@Timezone;
             return format;
         case "asctime":
-            dt.hour += int(Timezone);
-            dt.minute += int(float(Timezone) % 1 * 60);
-            format = default.DayNamesShort[dt.weekday]@default.MonthNames[dt.month+1]@Right(" "$dt.day, 2)@Right("0"$dt.hour, 2)$":"$Right("0"$dt.minute, 2)$":"$Right("0"$dt.second, 2)@dt.year;
+            dt.Hour += int(Timezone);
+            dt.Minute += int(float(Timezone) % 1 * 60);
+            format = default.DayNamesShort[dt.WeekDay]@default.MonthNames[dt.Month+1]@Right(" "$dt.Day, 2)@Right("0"$dt.Hour, 2)$":"$Right("0"$dt.Minute, 2)$":"$Right("0"$dt.Second, 2)@dt.Year;
             return format;
         case "2822":
             if (Timezone == "") Timezone = "+0000";
-            format = default.DayNamesShort[dt.weekday]$", "$Right("0"$dt.day, 2)@default.MonthNames[dt.month+1]@dt.Year@Right("0"$dt.hour, 2)$":"$Right("0"$dt.minute, 2)$":"$Right("0"$dt.second, 2)@Timezone;
+            format = default.DayNamesShort[dt.WeekDay]$", "$Right("0"$dt.Day, 2)@default.MonthNames[dt.Month+1]@dt.Year@Right("0"$dt.Hour, 2)$":"$Right("0"$dt.Minute, 2)$":"$Right("0"$dt.Second, 2)@Timezone;
             return format;
         // case: 822
         // case: 1123
         default:
             if (Timezone == "") Timezone = "GMT";
-            format = default.DayNamesShort[dt.weekday]$", "$Right("0"$dt.day, 2)@default.MonthNames[dt.month+1]@dt.Year@Right("0"$dt.hour, 2)$":"$Right("0"$dt.minute, 2)$":"$Right("0"$dt.second, 2)@Timezone;
+            format = default.DayNamesShort[dt.WeekDay]$", "$Right("0"$dt.Day, 2)@default.MonthNames[dt.Month+1]@dt.Year@Right("0"$dt.Hour, 2)$":"$Right("0"$dt.Minute, 2)$":"$Right("0"$dt.Second, 2)@Timezone;
             return format;
     }
 }
@@ -712,9 +744,13 @@ static final function string Trim(coerce string S)
 /** Write a log entry */
 static final function Logf(name Comp, coerce string message, optional int level, optional coerce string Param1, optional coerce string Param2)
 {
-    message = message@chr(9)@param1@chr(9)@Param2;
-    if (Len(message) > 512) message = Left(message, 512)@"..."; // trim message (crash protection)
-    Log(Comp$"["$level$"] :"@message, 'LibHTTP');
+    message = message @ chr(9) @ param1 @ chr(9) @ Param2;
+    if (Len(message) > 512)
+    {
+        message = Left(message, 512) @ "..."; // Trim message (crash protection)
+    }
+
+    `log(Comp $ "[" $ level $ "] :" @ message,, 'LibHTTP');
 }
 
 /** get the dirname of a filename, with traling slash */
@@ -722,7 +758,9 @@ static final function string dirname(string filename)
 {
     local array<string> parts;
     local int i;
-    split(filename, "/", parts);
+
+    ParseStringIntoArray(filename, parts, "/", False);
+
     filename = "";
     for (i = 0; i < parts.length-1; i++)
     {
@@ -735,7 +773,12 @@ static final function string dirname(string filename)
 static final function string basename(string filename)
 {
     local array<string> parts;
-    if (split(filename, "/", parts) > 0) return parts[parts.length-1];
+
+    ParseStringIntoArray(filename, parts, "/", false);
+    if (parts.length > 0)
+    {
+        return parts[parts.length-1];
+    }
     return filename;
 }
 
@@ -746,7 +789,7 @@ static final function int HexToDec(string hexcode)
 
     res = 0;
     hexcode = Caps(hexcode);
-    for (i = 0; i < len(hexcode); i++)
+    for (i = 0; i < Len(hexcode); i++)
     {
         cur = Asc(Mid(hexcode, i, 1));
         if (cur == 32) return res;
@@ -810,130 +853,134 @@ static final function string HTTPResponseCode(int code)
 /**
     Split a string with quotes, quotes may appear anywhere in the string, escape
     the quote char with a \ to use a literal. <br />
-    Qoutes are removed from the result, and escaped quotes are used as normal
+    Quotes are removed from the Result, and escaped quotes are used as normal
     quotes.
 */
-static function int AdvSplit(string input, string delim, out array<string> elm, optional string quoteChar)
+static function int AdvSplit(string Input, string Delim, out array<string> Elm, optional string QuoteChar)
 {
     local int di, qi;
-    local int delimlen, quotelen;
-    local string tmp;
+    local int DelimLen, QuoteLen;
+    local string Tmp;
 
     // if quotechar is empty use the faster split method
-    if (quoteChar == "") return Split(input, delim, elm);
-
-    delimlen = Len(delim);
-    quotelen = Len(quoteChar);
-    ReplaceChar(input, "\\"$quoteChar, chr(1)); // replace escaped quotes
-    while (Len(input) > 0)
+    if (QuoteChar == "")
     {
-        di = InStr(input, delim);
-        qi = InStr(input, quoteChar);
+        ParseStringIntoArray(Input, Elm, Delim, False);
+        return Elm.Length;
+    }
+
+    DelimLen = Len(Delim);
+    QuoteLen = Len(QuoteChar);
+    ReplaceChar(Input, "\\"$QuoteChar, chr(1)); // replace escaped quotes
+    while (Len(Input) > 0)
+    {
+        di = InStr(Input, Delim);
+        qi = InStr(Input, QuoteChar);
 
         if (di == -1 && qi == -1) // neither found
         {
-            ReplaceChar(input, chr(1), quoteChar);
-            elm[elm.length] = input;
-            input = "";
+            ReplaceChar(Input, chr(1), QuoteChar);
+            Elm[Elm.length] = Input;
+            Input = "";
         }
-        else if ((di < qi) && (di != -1) || (qi == -1)) // delim before a quotechar
+        else if ((di < qi) && (di != -1) || (qi == -1)) // Delim before a quotechar
         {
-            tmp = Left(input, di);
-            ReplaceChar(tmp, chr(1), quoteChar);
-            elm[elm.length] = tmp;
-            input = Mid(input, di+delimlen);
+            Tmp = Left(Input, di);
+            ReplaceChar(Tmp, chr(1), QuoteChar);
+            Elm[Elm.length] = Tmp;
+            Input = Mid(Input, di+DelimLen);
         }
         else {
-            tmp = "";
+            Tmp = "";
             // everything before the quote
-            if (qi > 0)    tmp = Left(input, qi);
-            input = mid(input, qi+quotelen);
+            if (qi > 0)    Tmp = Left(Input, qi);
+            Input = mid(Input, qi+QuoteLen);
             // up to the next quote
-            qi = InStr(input, quoteChar);
-            if (qi == -1) qi = Len(input);
-            tmp = tmp$Left(input, qi);
-            input = mid(input, qi+quotelen);
-            // everything after the quote till delim
-            di = InStr(input, delim);
+            qi = InStr(Input, QuoteChar);
+            if (qi == -1) qi = Len(Input);
+            Tmp = Tmp$Left(Input, qi);
+            Input = mid(Input, qi+QuoteLen);
+            // everything after the quote till Delim
+            di = InStr(Input, Delim);
             if (di > -1)
             {
-                tmp = tmp$Left(input, di);
-                input = mid(input, di+delimlen);
+                Tmp = Tmp$Left(Input, di);
+                Input = mid(Input, di+DelimLen);
             }
-            ReplaceChar(tmp, chr(1), quoteChar);
-            elm[elm.length] = tmp;
+            ReplaceChar(Tmp, chr(1), QuoteChar);
+            Elm[Elm.length] = Tmp;
         }
     }
-    return elm.length;
+    return Elm.length;
 }
 
 /*
     UnrealScript MD5 routine by Petr Jelinek (PJMODOS)
     http://wiki.beyondunreal.com/wiki/MD5
-    Code used for the digest authentication method.
+    Code used for the Digest authentication method.
     One change has been made: the md5 returned is lowercase
 */
 
-/** return the MD5 of the input string */
+/** return the MD5 of the Input string */
 static final function string MD5String (string str)
 {
-    local MD5_CTX context;
-    local array<byte> digest;
+    local MD5_CTX Context;
+    local array<byte> Digest;
     local string Hex;
     local int i;
 
-    MD5Init (context);
-    MD5Update (context, str, Len(str));
-    digest.Length = 16;
-    MD5Final (digest, context);
+    MD5Init (Context);
+    MD5Update (Context, str, Len(str));
+    Digest.Length = 16;
+    MD5Final (Digest, Context);
 
     for (i = 0; i < 16; i++)
-        Hex = Hex $ DecToHex(digest[i], 1);
+        Hex = Hex $ DecToHex(Digest[i], 1);
 
     return Hex;
 }
 
 /**
-    Return the MD5 of the input string array.
+    Return the MD5 of the Input string array.
     Concat is added after each line.
 */
-static final function string MD5StringArray (array<string> stra, optional string Concat)
+static final function string MD5StringArray(const out array<string> StrArray, optional string Concat)
 {
-    local MD5_CTX context;
-    local array<byte> digest;
+    local MD5_CTX Context;
+    local array<byte> Digest;
     local string Hex, str;
     local int i;
 
-    MD5Init (context);
-    for (i = 0; i < stra.length; i++)
+    MD5Init (Context);
+    for (i = 0; i < StrArray.length; i++)
     {
-        str = stra[i]$concat;
-        MD5Update (context, str, Len(str));
+        str = StrArray[i]$concat;
+        MD5Update (Context, str, Len(str));
     }
-    digest.Length = 16;
-    MD5Final (digest, context);
+    Digest.Length = 16;
+    MD5Final (Digest, Context);
 
     for (i = 0; i < 16; i++)
-        Hex = Hex $ DecToHex(digest[i], 1);
+        Hex = Hex $ DecToHex(Digest[i], 1);
 
     return Hex;
 }
 
-/** initialize the MD5 context */
-static final function MD5Init(out MD5_CTX context)
+/** initialize the MD5 Context */
+static final function MD5Init(out MD5_CTX Context)
 {
-    context.count.Length = 2;
-    context.count[0] = 0;
-    context.count[1] = 0;
-    context.state.Length = 4;
-    context.state[0] = 0x67452301;
-    context.state[1] = 0xefcdab89;
-    context.state[2] = 0x98badcfe;
-    context.state[3] = 0x10325476;
-    context.buffer.Length = 64;
+    Context.Count.Length = 2;
+    Context.Count[0] = 0;
+    Context.Count[1] = 0;
+    Context.State.Length = 4;
+    Context.State[0] = 0x67452301;
+    Context.State[1] = 0xefcdab89;
+    Context.State[2] = 0x98badcfe;
+    Context.State[3] = 0x10325476;
+    Context.Buffer.Length = 64;
 }
 
-static final function MD5Transform(out array<int> Buf, array<byte> block)
+static final function MD5Transform(out array<int> Buf, const out array<byte> Block)
 {
     local int A,B,C,D;
     local array<int> x;
@@ -945,7 +992,7 @@ static final function MD5Transform(out array<int> Buf, array<byte> block)
 
     x.Length = 16;
 
-    MD5Decode (x, block, 64);
+    MD5Decode (x, Block, 64);
 
     /* Round 1 */
     FF (a, b, c, d, x[ 0],  7, 0xd76aa478); /* 1 */
@@ -1025,41 +1072,41 @@ static final function MD5Transform(out array<int> Buf, array<byte> block)
     Buf[3] += D;
 }
 
-/** update MD5 context */
-static final function MD5Update(out MD5_CTX Context, string Data, int inputLen)
+/** update MD5 Context */
+static final function MD5Update(out MD5_CTX Context, string Data, int InputLen)
 {
-    local int i, index, partlen;
-    local array<byte> tmpbuf;
+    local int i, Index, PartLen;
+    local array<byte> TmpBuf;
 
-    tmpbuf.Length = 64;
-    index = ((context.count[0] >>> 3) & 0x3F);
-    if ((context.count[0] += (inputLen << 3)) < (inputLen << 3))
-        context.count[1]++;
-    context.count[1] += (inputLen >>> 29);
-    partLen = 64 - index;
+    TmpBuf.Length = 64;
+    Index = ((Context.Count[0] >>> 3) & 0x3F);
+    if ((Context.Count[0] += (InputLen << 3)) < (InputLen << 3))
+        Context.Count[1]++;
+    Context.Count[1] += (InputLen >>> 29);
+    partLen = 64 - Index;
 
-    if (inputLen >= partLen)
+    if (InputLen >= partLen)
     {
-        MD5Move(Data, 0, context.buffer, index, partLen);
-        MD5Transform (context.state, context.buffer);
-        for (i = partLen; i + 63 < inputLen; i += 64)
+        MD5Move(Data, 0, Context.Buffer, Index, partLen);
+        MD5Transform (Context.State, Context.Buffer);
+        for (i = partLen; i + 63 < InputLen; i += 64)
         {
-            MD5Move(Data, i, tmpbuf, 0, 64);
-            MD5Transform (context.state, tmpbuf);
+            MD5Move(Data, i, TmpBuf, 0, 64);
+            MD5Transform (Context.State, TmpBuf);
         }
-        index = 0;
+        Index = 0;
     }
     else
         i = 0;
 
-    MD5Move(Data, i, context.buffer, index, inputLen-i);
+    MD5Move(Data, i, Context.Buffer, Index, InputLen-i);
 }
 
-/** finalize the MD5 context */
-static final function MD5Final (out array<byte> digest, out MD5_CTX context)
+/** finalize the MD5 Context */
+static final function MD5Final(out array<byte> Digest, out MD5_CTX Context)
 {
     local array<byte> bits;
-    local int i, index, padLen;
+    local int i, Index, padLen;
     local string strbits;
     local string PADDING;
 
@@ -1067,63 +1114,63 @@ static final function MD5Final (out array<byte> digest, out MD5_CTX context)
     for (i = 1; i < 64; i++)
         PADDING = PADDING$chr(0);
 
-    MD5Encode (bits, context.count, 8);
+    MD5Encode (bits, Context.Count, 8);
 
-    index = ((context.count[0] >>> 3) & 0x3f);
-    if (index < 56)
-        padLen = (56 - index);
+    Index = ((Context.Count[0] >>> 3) & 0x3f);
+    if (Index < 56)
+        padLen = (56 - Index);
     else
-        padLen = (120 - index);
-    MD5Update (context, PADDING, padLen);
+        padLen = (120 - Index);
+    MD5Update (Context, PADDING, padLen);
     strbits = "";
     for (i=0;i<8;i++)
         strbits = strbits$Chr(bits[i]);
-    MD5Update (context, strbits, 8);
-    MD5Encode (digest, context.state, 16);
+    MD5Update (Context, strbits, 8);
+    MD5Encode (Digest, Context.State, 16);
 
     for (i = 0; i < 64; i++)
     {
-        context.buffer[i] = 0;
+        Context.Buffer[i] = 0;
     }
 }
 
-static final function MD5Encode (out array<byte> output, array<int> input, int len)
+static final function MD5Encode (out array<byte> Output, const out array<int> Input, int Len)
 {
     local int i, j;
 
     i = 0;
-    for (j = 0; j < len; j += 4)
+    for (j = 0; j < Len; j += 4)
     {
-        output[j] = (input[i] & 0xff);
-        output[j+1] = ((input[i] >> 8) & 0xff);
-        output[j+2] = ((input[i] >> 16) & 0xff);
-        output[j+3] = ((input[i] >> 24) & 0xff);
+        Output[j] = (Input[i] & 0xff);
+        Output[j+1] = ((Input[i] >> 8) & 0xff);
+        Output[j+2] = ((Input[i] >> 16) & 0xff);
+        Output[j+3] = ((Input[i] >> 24) & 0xff);
         i++;
     }
 }
 
 
-static final function MD5Decode(out array<int> output, array<byte> input, int len)
+static final function MD5Decode(out array<int> Output, const out array<byte> Input, int Len)
 {
     local int i, j;
 
     i = 0;
-    for (j = 0; j < len; j += 4)
+    for (j = 0; j < Len; j += 4)
     {
-        output[i] = ((input[j]) | (int(input[j+1]) << 8) | (int(input[j+2]) << 16) | (int(input[j+3]) << 24));
+        Output[i] = ((Input[j]) | (int(Input[j+1]) << 8) | (int(Input[j+2]) << 16) | (int(Input[j+3]) << 24));
         i++;
     }
 }
 
 
-static final function MD5Move(string src, int srcindex, out array<byte> buffer, int bufindex, int len)
+static final function MD5Move(string Src, int SrcIndex, out array<byte> Buffer, int BufIndex, int Len)
 {
     local int i,j;
 
-    j = bufindex;
-    for (i = srcindex; i < srcindex+len; i++)
+    j = BufIndex;
+    for (i = SrcIndex; i < SrcIndex+Len; i++)
     {
-        buffer[j] = Asc(Mid(src, i, 1));
+        Buffer[j] = Asc(Mid(Src, i, 1));
         j++;
         if (j == 64)
             break;
@@ -1195,6 +1242,22 @@ static final function string DecToHex(int dec, int size)
     }
 
     return s;
+}
+
+static final function bool Divide(coerce string Src, string Divider, out string LeftPart, out string RightPart)
+{
+    local int i;
+
+    i = InStr(Src, Divider);
+    if (i == INDEX_NONE)
+    {
+        return false;
+    }
+
+    LeftPart = Left(Src, i);
+    RightPart = Right(Src, Len(Src) - i - 1);
+
+    return true;
 }
 
 defaultproperties

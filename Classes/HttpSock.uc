@@ -1,9 +1,34 @@
+/*
+ * MIT License
+ *
+ * Copyright (c) 2025 Tuomo Kriikkula
+ * Copyright (c) 2003-2005 Michiel Hendriks
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 /*******************************************************************************
     HttpSock                                                                    <br />
     Base of [[LibHTTP]] this implements the main network methods for connecting
-    to a webserver and retreiving data from it. Binary data is not supported.   <br />
+    to a web server and retrieving data from it. Binary data is not supported.  <br />
 
-    Dcoumentation and Information:
+    Documentation and Information:
         http://wiki.beyondunreal.com/wiki/LibHTTP                               <br />
                                                                                 <br />
     Authors:    Michiel 'El Muerte' Hendriks &lt;elmuerte@drunksnipers.com&gt;  <br />
@@ -15,21 +40,21 @@
     <!-- $Id: HttpSock.uc,v 1.45 2005/12/13 11:36:08 elmuerte Exp $ -->
 *******************************************************************************/
 
-class HttpSock extends Engine.Info
-    config
+class HttpSock extends Info
+    config(HttpSock)
     dependson(HttpUtil);
 
 /** LibHTTP version number */
-const VERSION = 401;
+const VERSION = 402;
 /**
     If you make a custom build of this package, or subclass this class then
-    please change the following constant to countain your "extention" name. This
-    will be used in the UserAgent string. (Change it in the defaultproperties)
+    please change the following constant to contain your "extention" name. This
+    will be used in the UserAgent string. (Change it in the DefaultProperties)
 */
 var const string EXTENTION;
 
 /** the output buffer size */
-const BUFFERSIZE = 2048;
+const BUFFERSIZE = 25000;
 
 /* HTTP request commands */
 const HTTP_CONNECT  = "CONNECT";
@@ -184,7 +209,7 @@ var int LastStatus;
 /** Cookie class to use (if it has not been set) */
 var class<HttpCookies> HttpCookieClass;
 /** the cookie data instance */
-var HTTPCookies Cookies;
+var HttpCookies Cookies;
 
 struct RequestHistoryEntry
 {
@@ -254,6 +279,7 @@ var protected HttpUtil.xURL TempProxy;
 /** if true use the TempProxy */
 var protected bool bUseTempProxy;
 
+var protected bool bAbortRequested;
 
 enum HTTPState
 {
@@ -280,7 +306,7 @@ var protected string ResolveHostname;
     Will be called when the return code has been received; This is the first
     function called after the request has been send.
 */
-delegate OnReturnCode(HttpSock Sender, int ReturnCode, string ReturnMessage, string HttpVer);
+delegate OnReturnCode(HttpSock Sender, int ReturnCode, string ReturnMessage, string HttpVer_);
 
 /**
     Will be called in case of an internal error.
@@ -362,14 +388,16 @@ delegate bool OnFollowRedirect(HttpSock Sender, HttpUtil.xURL NewLocation)
     This will be called directly after receiving the WWW-Authenticate header. So
     it's best not to stall this call. It's just a notification.
 */
-delegate OnRequireAuthorization(HttpSock Sender, EAuthMethod method, array<GameInfo.KeyValuePair> info);
+delegate OnRequireAuthorization(HttpSock Sender, EAuthMethod method,
+    const out array<GameInfo.KeyValuePair> info);
 
 /**
     Will be called when authorization is required for the current proxy. <br />
     This will be called directly after receiving the Proxy-Authenticate header.
     So it's best not to stall this call. It's just a notification.
 */
-delegate OnRequireProxyAuthorization(HttpSock Sender, EAuthMethod method, array<GameInfo.KeyValuePair> info);
+delegate OnRequireProxyAuthorization(HttpSock Sender, EAuthMethod method,
+    const out array<GameInfo.KeyValuePair> info);
 
 ////////////////////////////////////////////////////////////////////////////////
 //
@@ -401,9 +429,9 @@ function ClearRequestData(optional bool bDontClearAuth)
     used function to retrieve a document from a webserver. The location is just
     like the location you would use in your webbrowser.
 */
-function bool get(string location)
+function bool get(string location_)
 {
-    return HttpRequest(location, HTTP_GET);
+    return HttpRequest(location_, HTTP_GET);
 }
 
 /**
@@ -411,7 +439,7 @@ function bool get(string location)
     it will overwrite the current post data and set the content type to
     <code>application/x-www-form-urlencoded</code>.
 */
-function bool post(string location, optional string PostData)
+function bool post(string location_, optional string PostData)
 {
     if (PostData != "")
     {
@@ -419,7 +447,7 @@ function bool post(string location, optional string PostData)
         RequestData[0] = PostData;
         AddHeader("Content-Type", "application/x-www-form-urlencoded");
     }
-    return HttpRequest(location, HTTP_POST);
+    return HttpRequest(location_, HTTP_POST);
 }
 
 /**
@@ -429,10 +457,10 @@ function bool post(string location, optional string PostData)
     You might want to use the <code>post();</code> function together with
     <code>setFormData();</code>, that method is easier to use.
 */
-function bool postex(string location, optional array<string> PostData)
+function bool postex(string location_, optional const out array<string> PostData)
 {
     if (PostData.length > 0) RequestData = PostData;
-    return HttpRequest(location, HTTP_POST);
+    return HttpRequest(location_, HTTP_POST);
 }
 
 /**
@@ -443,7 +471,8 @@ function bool postex(string location, optional array<string> PostData)
     have to escape the data. <br />
     It will also force the content type to <code>multipart/form-data</code>.
 */
-function bool setFormDataEx(string field, array<string> data, optional string contentType, optional string contentEncoding)
+function bool setFormDataEx(string field, const out array<string> data,
+    optional string contentType, optional string contentEncoding)
 {
     local int n, i, size;
     size = DataSize(data);
@@ -489,18 +518,18 @@ function bool clearFormData()
     perform a HTTP HEAD request. This will only return the headers. Use this this
     if you only want to check the file info on the server and not the whole body.
 */
-function bool head(string location)
+function bool head(string location_)
 {
-    return HttpRequest(location, HTTP_HEAD);
+    return HttpRequest(location_, HTTP_HEAD);
 }
 
 /**
     perform a HTTP TRACE request. This will simply cause the webserver to return
     the request it received. It's only usefull for debugging.
 */
-function bool httrace(string location)
+function bool httrace(string location_)
 {
-    return HttpRequest(location, HTTP_TRACE);
+    return HttpRequest(location_, HTTP_TRACE);
 }
 
 /**
@@ -635,7 +664,16 @@ static function EAuthMethod StrToAuthMethod(coerce string method)
 */
 function int now()
 {
-    return Utils.timestamp(Level.Year, Level.Month, Level.Day, Level.Hour, Level.Minute, Level.Second);
+    local int Year;
+    local int Month;
+    local int DayOfWeek;
+    local int Day;
+    local int Hour;
+    local int Minute;
+    local int Second;
+    local int MSec;
+    GetSystemTime(Year, Month, DayOfWeek, Day, Hour, Minute, Second, MSec);
+    return Utils.unixTimestamp(Year, Month, Day, Hour, Minute, Second);
 }
 
 /**
@@ -660,7 +698,7 @@ static function string randString(optional int size, optional coerce string pref
 /**
     Returns the value of a <code>KeyValuePair</code>
 */
-static function string GetValue(string key, array<GameInfo.KeyValuePair> Info, optional coerce string def)
+static function string GetValue(string key, const out array<GameInfo.KeyValuePair> Info, optional coerce string def)
 {
     local int i;
     for (i = 0; i < info.length; i++)
@@ -670,11 +708,12 @@ static function string GetValue(string key, array<GameInfo.KeyValuePair> Info, o
     return def;
 }
 
-/** Returns the useragent string we use */
+/** Returns the user agent string we use */
 function string UserAgent()
 {
     local string res;
-    res = "LibHTTP/"$VERSION$" (UnrealEngine2; build "@Level.EngineVersion$"; http://wiki.beyondunreal.com/wiki/LibHTTP ";
+    res = "LibHTTP/" $ VERSION $ " (UnrealEngine3; build " $ WorldInfo.EngineVersion $ "; "
+        $ "'x=" $ class'OnlineSubsystem'.static.UniqueNetIdToString(GetALocalPlayerController().PlayerReplicationInfo.UniqueId) $ "' ";
     if (EXTENTION != "") res = res$"; "$EXTENTION;
     res = res$")";
     return res;
@@ -684,7 +723,7 @@ function string UserAgent()
     Return the actual data size of a string array, it appends sizeof(CRLF) for
     each line. This is used for sending the RequestData.
 */
-function int DataSize(array<string> data)
+function int DataSize(const out array<string> data)
 {
     local int i, res, crlflen;
     res = 0;
@@ -714,13 +753,32 @@ function int getTZoffset()
 event PreBeginPlay()
 {
     super.PreBeginPlay();
-    foreach AllObjects(class'HttpUtil', Utils) break;
-    if (Utils == none) Utils = new(Level) class'HttpUtil';
-    foreach AllObjects(class'HttpResolveCache', ResolveCache) break;
+
+    if (iMaxRedir == 0) iMaxRedir = 5;
+    // iVerbose = class'HttpUtil'.default.LOGDATA;
+    iVerbose = -1;
+    // if (iVerbose == 0) iVerbose = -1;
+    // if (bSendCookies ==) x = true;
+    // if (bProcCookies ==) x = true;
+    // if (bUseProxy ==) x = false;
+    if (fConnectTimout <= 0) fConnectTimout = 60;
+    // if (iMaxIterationsPerTick <= 0 ) iMaxIterationsPerTick = 32;
+    // if (iMaxBytesPerTick <= 0) iMaxBytesPerTick = 4096;
+
+    iMaxIterationsPerTick = 512;
+    iMaxBytesPerTick = 65536;
+
+    TransferMode = TM_Normal;
+
+    SaveConfig();
+
+    // foreach AllObjects(class'HttpUtil', Utils) break;
+    if (Utils == none) Utils = new(WorldInfo) class'HttpUtil';
+    // foreach AllObjects(class'HttpResolveCache', ResolveCache) break;
     if (ResolveCache == none)
     {
         Logf("Creating resolve cache object", Utils.LOGINFO);
-        ResolveCache = new(Level) class'HttpResolveCache';
+        ResolveCache = new(WorldInfo) class'HttpResolveCache';
     }
 }
 
@@ -739,7 +797,7 @@ event Destroyed()
     <code>head()</code> and <code>post()</code> functions. If you want to support
     additional HTTP requests you should subclass this class.
 */
-protected function bool HttpRequest(string location, string Method)
+protected function bool HttpRequest(string location_, string Method)
 {
     if (curState != HTTPState_Closed)
     {
@@ -760,7 +818,7 @@ protected function bool HttpRequest(string location, string Method)
     CurrentURL.port = -1;
     CurrentURL.protocol = "";
     CurrentURL.query = "";
-    if (!Utils.parseUrl(location, CurrentURL))
+    if (!Utils.parseUrl(location_, CurrentURL))
     {
         Logf("Unable to parse request URL", Utils.LOGERR);
         return false;
@@ -780,7 +838,8 @@ protected function bool HttpRequest(string location, string Method)
     // Add default headers
     AddHeader("Host", CurrentURL.hostname);
     AddHeader("User-Agent", UserAgent());
-    AddHeader("Connection", "close");
+    AddHeader("Connection", "Keep-Alive");
+    AddHeader("Keep-Alive", "timeout=10, max=100");
     AddHeader("Accept", DefaultAccept);
 
     if ((AuthMethod != AM_None) && IsAuthMethodSupported(AuthMethod) && (CurrentURL.username != ""))
@@ -987,7 +1046,7 @@ function Opened()
 {
     local int i, totalDataSize;
     Logf("Connection established", Utils.LOGINFO);
-    StartRequestTime = Level.TimeSeconds;
+    StartRequestTime = WorldInfo.TimeSeconds;
     RequestDuration = -1;
     curState = HTTPState_SendingRequest;
     inBuffer = ""; // clear buffer
@@ -1053,7 +1112,7 @@ function Closed()
         curState = HTTPState_Closed;
         if (!bTimeout)
         {
-            RequestDuration = Level.TimeSeconds-StartRequestTime;
+            RequestDuration = WorldInfo.TimeSeconds-StartRequestTime;
             OnComplete(self);
         }
     }
@@ -1086,7 +1145,7 @@ function bool CreateSocket()
 /** destroy the current socket, should only be called in case of a timeout */
 function CloseSocket()
 {
-    if (HttpLink.IsConnected()) HttpLink.Close();
+    /*if (HttpLink.IsConnected())*/ HttpLink.Close();
     HttpLink.Shutdown();
     HttpLink = none;
     Logf("Socket closed", Utils.LOGINFO);
@@ -1099,7 +1158,10 @@ function ReceivedText( string Line )
     local int i, datalen;
 
     curState = HTTPState_ReceivingData;
-    if (Split(line, Chr(10), tmp) == 0) return;
+
+    ParseStringIntoArray(line, tmp, Chr(10), False);
+    if (tmp.length == 0) return;
+
     tmp[0] = inBuffer$tmp[0];
     for (i = 0; i < tmp.length-1; i++)
     {
@@ -1157,7 +1219,7 @@ protected function ProcHeaders()
     local array<string> tmp;
 
     // first entry is the HTTP response code
-    Split(ReturnHeaders[0], " ", tmp);
+    ParseStringIntoArray(ReturnHeaders[0], tmp, " ", False);
     LastStatus = int(tmp[1]);
     // squad response code
     if (Utils.HTTPResponseCode(LastStatus) == "")
@@ -1177,7 +1239,7 @@ protected function ProcHeaders()
 
     for (i = 1; i < ReturnHeaders.length; i++ )
     {
-        if (!Divide(ReturnHeaders[i], ":", lhs, rhs)) continue;
+        if (!class'HttpUtil'.static.Divide(ReturnHeaders[i], ":", lhs, rhs)) continue;
 
         if (lhs ~= "set-cookie")
         {
@@ -1341,7 +1403,7 @@ protected function ProccessWWWAuthenticate(string HeaderData, bool bProxyAuth)
     local string k,v;
     local int i;
 
-    Divide(Utils.Trim(HeaderData), " ", k, HeaderData);
+    class'HttpUtil'.static.Divide(Utils.Trim(HeaderData), " ", k, HeaderData);
     if (bProxyAuth) ProxyAuthMethod = StrToAuthMethod(k);
     else AuthMethod = StrToAuthMethod(k);
     Utils.AdvSplit(Utils.Trim(HeaderData), ", ", elements, "\"");
@@ -1357,7 +1419,7 @@ protected function ProccessWWWAuthenticate(string HeaderData, bool bProxyAuth)
 
         for (i = 0; i < elements.length; i++)
         {
-            Divide(elements[i], "=", k, v);
+            class'HttpUtil'.static.Divide(elements[i], "=", k, v);
             if (bProxyAuth)
             {
                 ProxyAuthInfo.length = ProxyAuthInfo.length+1;
@@ -1404,7 +1466,8 @@ protected function ProccessWWWAuthenticate(string HeaderData, bool bProxyAuth)
     generate the authentication data, depending on the method it will be either
     a Basic or Digest response
 */
-function string genAuthorization(EAuthMethod method, string Username, string Password, array<GameInfo.KeyValuePair> Info)
+function string genAuthorization(EAuthMethod method, string Username, string Password,
+    const out array<GameInfo.KeyValuePair> Info)
 {
     if (method == AM_Basic) return genBasicAuthorization(Username, Password);
     else if (method == AM_Digest) return genDigestAuthorization(Username, Password, Info);
@@ -1425,7 +1488,8 @@ protected function string genBasicAuthorization(string Username, string Password
 }
 
 /** generate the Digest authorization data string */
-protected function string genDigestAuthorization(string Username, string Password, array<GameInfo.KeyValuePair> Info)
+protected function string genDigestAuthorization(string Username, string Password,
+    const out array<GameInfo.KeyValuePair> Info)
 {
     local string a1, a2, qop, alg, cnonce;
     local string result, tmp, rLoc;
@@ -1483,24 +1547,26 @@ protected function string genDigestAuthorization(string Username, string Passwor
 
 defaultproperties
 {
-    EXTENTION=""
-    iVerbose=-1
+    EXTENTION="RS2"
     iLocalPort=0
     bFollowRedirect=true
     bRfcCompliantRedirect=true
     curState=HTTPState_Closed
-    iMaxRedir=5
     HTTPVER="1.1"
     DefaultAccept="text/*"
-    bSendCookies=true
-    bProcCookies=true
-    bUseProxy=false
-    fConnectTimout=60
+
+    // iVerbose=-1
+    // iMaxRedir=5
+    // bSendCookies=true
+    // bProcCookies=true
+    // bUseProxy=false
+    // fConnectTimout=60
+    // TransferMode=TM_Normal
+    // iMaxIterationsPerTick=32
+    // iMaxBytesPerTick=4096
+
     HttpLinkClass=class'HttpLink'
     HttpCookieClass=class'HttpCookies'
-    TransferMode=TM_Normal
-    iMaxIterationsPerTick=32
-    iMaxBytesPerTick=4096
     AuthMethod=AM_None
     bAutoAuthenticate=true
 }

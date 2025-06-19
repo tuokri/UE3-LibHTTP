@@ -1,8 +1,33 @@
+/*
+ * MIT License
+ *
+ * Copyright (c) 2025 Tuomo Kriikkula
+ * Copyright (c) 2003-2005 Michiel Hendriks
+ *
+ * Permission is hereby granted, free of charge, to any person obtaining a copy
+ * of this software and associated documentation files (the "Software"), to deal
+ * in the Software without restriction, including without limitation the rights
+ * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ * copies of the Software, and to permit persons to whom the Software is
+ * furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all
+ * copies or substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ */
+
 /*******************************************************************************
     HttpCookies                                                                 <br />
     Cookie management system. Part of [[LibHTTP]].                              <br />
                                                                                 <br />
-    Dcoumentation and Information:
+    Documentation and Information:
         http://wiki.beyondunreal.com/wiki/LibHTTP                               <br />
                                                                                 <br />
     Authors:    Michiel 'El Muerte' Hendriks &lt;elmuerte@drunksnipers.com&gt;  <br />
@@ -14,7 +39,7 @@
     <!-- $Id: HttpCookies.uc,v 1.14 2005/12/05 10:03:41 elmuerte Exp $ -->
 *******************************************************************************/
 
-class HttpCookies extends Core.Object config parseconfig;
+class HttpCookies extends Object config(HttpCookies);
 
 /** cookie entry */
 struct HTTPCookie
@@ -23,7 +48,7 @@ struct HTTPCookie
     var string name;
     /** the current value */
     var string value;
-    /** exprises timestamp */
+    /** expires timestamp */
     var int expires;
     /** available to domain */
     var string domain;
@@ -44,7 +69,7 @@ event Created()
 {
     local int i;
     local bool bDirty;
-    foreach AllObjects(class'HttpUtil', Utils) break;
+    // foreach AllObjects(class'HttpUtil', Utils) break;
     if (Utils == none) Utils = new class'HttpUtil';
     bDirty = false;
     // remove session cookies
@@ -160,9 +185,10 @@ function bool ParseCookieData(string data, string rDomain, string rPath,
     local int i;
     local string n,v;
 
-    if (split(data, ";", parts) > 0)
+    ParseStringIntoArray(data, parts, ";", False);
+    if (parts.Length > 0)
     {
-        if (divide(parts[0], "=", c.Name, c.Value))
+        if (class'HttpUtil'.static.Divide(parts[0], "=", c.Name, c.Value))
         {
             c.Name = Utils.trim(c.Name);
             c.Value = Utils.trim(c.Value);
@@ -170,7 +196,7 @@ function bool ParseCookieData(string data, string rDomain, string rPath,
         }
         for (i = 1; i < parts.length; i++)
         {
-            if (divide(parts[i], "=", n, v))
+            if (class'HttpUtil'.static.Divide(parts[i], "=", n, v))
             {
                 n = Utils.trim(n);
                 v = Utils.trim(v);
@@ -228,5 +254,5 @@ static function string UnescapeQuotes(string in)
 
 defaultproperties
 {
-    iVerbose=-1
+    // iVerbose=-1
 }
