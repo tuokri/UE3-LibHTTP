@@ -1,0 +1,5 @@
+[Flags]
+AllowDownload=True
+ServerSideOnly=False
+ClientOptional=False
+Official=False
