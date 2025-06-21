@@ -429,9 +429,15 @@ function ClearRequestData(optional bool bDontClearAuth)
     used function to retrieve a document from a webserver. The location is just
     like the location you would use in your webbrowser.
 */
-function bool get(string location_)
+function bool Get(string Location_)
 {
-    return HttpRequest(location_, HTTP_GET);
+    return HttpRequest(Location_, HTTP_GET);
+}
+
+// TODO: verify this works properly.
+function bool Delete(string Location_)
+{
+    return HttpRequest(Location_, HTTP_DELETE);
 }
 
 /**
@@ -439,7 +445,7 @@ function bool get(string location_)
     it will overwrite the current post data and set the content type to
     <code>application/x-www-form-urlencoded</code>.
 */
-function bool post(string location_, optional string PostData)
+function bool Post(string Location_, optional string PostData)
 {
     if (PostData != "")
     {
@@ -447,7 +453,7 @@ function bool post(string location_, optional string PostData)
         RequestData[0] = PostData;
         AddHeader("Content-Type", "application/x-www-form-urlencoded");
     }
-    return HttpRequest(location_, HTTP_POST);
+    return HttpRequest(Location_, HTTP_POST);
 }
 
 /**
@@ -457,10 +463,22 @@ function bool post(string location_, optional string PostData)
     You might want to use the <code>post();</code> function together with
     <code>setFormData();</code>, that method is easier to use.
 */
-function bool postex(string location_, optional const out array<string> PostData)
+function bool PostEx(string Location_, optional const out array<string> PostData)
 {
     if (PostData.length > 0) RequestData = PostData;
-    return HttpRequest(location_, HTTP_POST);
+    return HttpRequest(Location_, HTTP_POST);
+}
+
+// TODO: verify this works properly!
+function bool Put(string Location_, optional string PutData)
+{
+    if (PutData != "")
+    {
+        RequestData.length = 0;
+        RequestData[0] = PutData;
+        AddHeader("Content-Type", "application/x-www-form-urlencoded");
+    }
+    return HttpRequest(Location_, HTTP_POST);
 }
 
 /**
@@ -471,8 +489,8 @@ function bool postex(string location_, optional const out array<string> PostData
     have to escape the data. <br />
     It will also force the content type to <code>multipart/form-data</code>.
 */
-function bool setFormDataEx(string field, const out array<string> data,
-    optional string contentType, optional string contentEncoding)
+function bool SetFormDataEx(string Field, const out array<string> Data,
+    optional string ContentType, optional string ContentEncoding)
 {
     local int n, i, size;
     size = DataSize(data);
@@ -854,7 +872,8 @@ protected function bool HttpRequest(string location_, string Method)
             RequestData[0] = RequestData[0]$CurrentURL.query;
             AddHeader("Content-Type", "application/x-www-form-urlencoded"); // make sure it's set
         }
-        else {
+        else
+        {
             Logf("POST data collision, data on URL left in tact", Utils.LOGWARN);
         }
     }
@@ -875,6 +894,8 @@ protected function bool IsSupportedMethod()
     else if (RequestMethod ~= HTTP_HEAD) return true;
     else if (RequestMethod ~= HTTP_POST) return true;
     else if (RequestMethod ~= HTTP_TRACE) return true;
+    else if (RequestMethod ~= HTTP_DELETE) return true;
+    else if (RequestMethod ~= HTTP_PUT) return true;
     return false;
 }
 
