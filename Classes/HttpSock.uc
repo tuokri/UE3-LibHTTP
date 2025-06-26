@@ -1340,7 +1340,7 @@ protected function bool ShouldFollowRedirect(int retc, string method)
                 }
             }
         // semi blind redirects (no additional logic needed)
-        case 201: // "Created";
+        case 201: // "Created"; // TODO: why is 201 considered a redirect in this client?
         case 307: // "Temporary Redirect";
             // find the Location: field
             for (i = 0; i < ReturnHeaders.length; i++)
