@@ -730,10 +730,12 @@ static function string GetValue(string key, const out array<GameInfo.KeyValuePai
 function string UserAgent()
 {
     local string res;
-    res = "LibHTTP/" $ VERSION $ " (UnrealEngine3; build " $ WorldInfo.EngineVersion $ "; "
-        $ "'x=" $ class'OnlineSubsystem'.static.UniqueNetIdToString(GetALocalPlayerController().PlayerReplicationInfo.UniqueId) $ "' ";
-    if (EXTENTION != "") res = res$"; "$EXTENTION;
-    res = res$")";
+    res = "LibHTTP/" $ VERSION $ " (UnrealEngine3; build " $ WorldInfo.EngineVersion;
+    if (EXTENTION != "")
+    {
+        res $= "; " $ EXTENTION;
+    }
+    res = res $ ")";
     return res;
 }
 
