@@ -48,10 +48,10 @@ class HttpSock extends Info
 const VERSION = 402;
 /**
     If you make a custom build of this package, or subclass this class then
-    please change the following constant to contain your "extention" name. This
+    please change the following constant to contain your "extension" name. This
     will be used in the UserAgent string. (Change it in the DefaultProperties)
 */
-var const string EXTENTION;
+var const string EXTENSION;
 
 /** the output buffer size */
 const BUFFERSIZE = 25000;
@@ -731,9 +731,9 @@ function string UserAgent()
 {
     local string res;
     res = "LibHTTP/" $ VERSION $ " (UnrealEngine3; build " $ WorldInfo.EngineVersion;
-    if (EXTENTION != "")
+    if (EXTENSION != "")
     {
-        res $= "; " $ EXTENTION;
+        res $= "; " $ EXTENSION;
     }
     res = res $ ")";
     return res;
@@ -1570,7 +1570,7 @@ protected function string genDigestAuthorization(string Username, string Passwor
 
 defaultproperties
 {
-    EXTENTION=""
+    EXTENSION=""
     iLocalPort=0
     bFollowRedirect=true
     bRfcCompliantRedirect=true
