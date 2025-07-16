@@ -1570,7 +1570,7 @@ protected function string genDigestAuthorization(string Username, string Passwor
 
 defaultproperties
 {
-    EXTENTION="RS2"
+    EXTENTION=""
     iLocalPort=0
     bFollowRedirect=true
     bRfcCompliantRedirect=true
